@@ -10,17 +10,21 @@ export function InterventionToolbar() {
 
   const handleBlockCorridor = useCallback(async () => {
     if (!scene || busy) return;
+    const zoneId =
+      scene.environment.semanticZones.find((z) => z.type === "circulation")?.id ??
+      scene.environment.semanticZones[0]?.id;
+    if (!zoneId) return;
     setBusy("block_corridor");
     try {
       await sendIntervention({
         sceneId: scene.sceneId,
         type: "block_corridor",
-        params: { zoneId: "zone_main_corridor" },
+        params: { zoneId },
       });
     } catch {
       // Server may not be running; apply locally anyway
     }
-    triggerIntervention("block_corridor", { zoneId: "zone_main_corridor" });
+    triggerIntervention("block_corridor", { zoneId });
     setBusy(null);
   }, [scene, busy, triggerIntervention]);
 
@@ -40,7 +44,7 @@ export function InterventionToolbar() {
     setBusy(null);
   }, [scene, busy, triggerIntervention]);
 
-  const handleMoveTable = useCallback(() => {
+  const handleMoveTable = useCallback(async () => {
     if (!scene || busy) return;
     setBusy("move_table");
     // Find first table and move it to a random position within bounds
@@ -48,7 +52,17 @@ export function InterventionToolbar() {
     if (table) {
       const newX = Math.random() * scene.environment.bounds.width * 0.6 + scene.environment.bounds.width * 0.2;
       const newZ = Math.random() * scene.environment.bounds.depth * 0.6 + scene.environment.bounds.depth * 0.2;
-      triggerIntervention("move_table", { objectId: table.id, position: { x: newX, z: newZ } });
+      const params = { objectId: table.id, newPosition: { x: newX, y: 0, z: newZ } };
+      try {
+        await sendIntervention({
+          sceneId: scene.sceneId,
+          type: "move_table",
+          params,
+        });
+      } catch {
+        // Server may not be running; apply locally anyway
+      }
+      triggerIntervention("move_table", params);
     }
     setBusy(null);
   }, [scene, busy, triggerIntervention]);

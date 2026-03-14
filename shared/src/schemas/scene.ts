@@ -89,7 +89,7 @@ export const CompiledScenePackageSchema = z.object({
   style: StyleProfileSchema,
   assets: AssetBindingsSchema,
   compileMetadata: z.object({
-    sceneConfidence: z.number(),
+    sceneConfidence: z.number().min(0).max(1),
     geminiModel: z.string(),
     uncertainty: z.array(z.string()),
   }),

@@ -3,6 +3,12 @@ import { buildStructuringPrompt } from "../prompts/structuring.js";
 import { CompiledScenePackageSchema } from "@next-state/shared";
 import type { CompiledScenePackage } from "@next-state/shared";
 import type { VideoAnalysisOutput, StyleExtractionOutput } from "../schemas.js";
+import { zodToJsonSchema } from "zod-to-json-schema";
+
+const compiledSceneJsonSchema = zodToJsonSchema(
+  CompiledScenePackageSchema,
+  { target: "openApi3", $refStrategy: "none" },
+);
 
 const MODEL = "gemini-3.1-flash-lite-preview";
 const MAX_RETRIES = 3;
@@ -47,6 +53,7 @@ export async function runStructuring(
         ],
         config: {
           responseMimeType: "application/json",
+          responseJsonSchema: compiledSceneJsonSchema,
         },
       });
 

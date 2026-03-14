@@ -319,6 +319,20 @@ function checkReplanConditions(
     return true;
   }
 
+  // Group split: companion is > 5m away
+  if (agent.social.companionIds.length > 0) {
+    const COMPANION_SPLIT_DIST_SQ = 25; // 5m squared
+    for (const companionId of agent.social.companionIds) {
+      const companion = world.agents.get(companionId);
+      if (!companion) continue;
+      const dx = agent.runtime.position.x - companion.runtime.position.x;
+      const dz = agent.runtime.position.z - companion.runtime.position.z;
+      if (dx * dx + dz * dz > COMPANION_SPLIT_DIST_SQ) {
+        return true;
+      }
+    }
+  }
+
   return false;
 }
 

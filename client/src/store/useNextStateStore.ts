@@ -237,7 +237,7 @@ export const useNextStateStore = create<NextStateStore>((set, get) => ({
 
     if (type === "move_table") {
       const objectId = params.objectId as string;
-      const newPosition = params.position as { x: number; z: number };
+      const newPosition = params.newPosition as { x: number; y: number; z: number };
       if (!state.scene || !objectId || !newPosition) return;
 
       // Update the object position in the scene
@@ -264,7 +264,34 @@ export const useNextStateStore = create<NextStateStore>((set, get) => ({
           set({ objectOccupancy: newOccupancy });
         }
 
-        set({ agents: new Map(state.agents) });
+        // Rebuild navgraph around moved object: block/unblock edges that
+        // intersect the object's new footprint (lightweight proximity check)
+        const footprintRadius = (obj.size?.x ?? 0.8) / 2 + 0.3;
+        const footprintRadiusSq = footprintRadius * footprintRadius;
+        const updatedEdges = state.navEdges.map((edge) => {
+          const navNodes = state.scene!.environment.navigationGraph.nodes;
+          const fromNode = navNodes.find((n) => n.id === edge.from);
+          const toNode = navNodes.find((n) => n.id === edge.to);
+          if (!fromNode || !toNode) return edge;
+
+          // Check if the edge midpoint is within the object's footprint
+          const midX = (fromNode.position.x + toNode.position.x) / 2;
+          const midZ = (fromNode.position.z + toNode.position.z) / 2;
+          const dx = midX - obj.position.x;
+          const dz = midZ - obj.position.z;
+          const distSq = dx * dx + dz * dz;
+
+          if (distSq < footprintRadiusSq) {
+            return { ...edge, blocked: true };
+          }
+          // Unblock edges that were previously blocked by this object but no longer intersect
+          if (edge.blocked) {
+            return { ...edge, blocked: false };
+          }
+          return edge;
+        });
+
+        set({ navEdges: updatedEdges, agents: new Map(state.agents) });
       }
     }
 

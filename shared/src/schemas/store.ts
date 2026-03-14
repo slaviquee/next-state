@@ -7,7 +7,7 @@ export const JobStateSchema = z.object({
   fileMimeType: z.string().nullable(),
   sceneId: z.string().nullable(),
   currentStep: z.string().nullable(),
-  progress: z.number(),
+  progress: z.number().min(0).max(1),
   error: z.string().nullable(),
   startedAt: z.number(),
 });
