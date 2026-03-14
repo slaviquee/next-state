@@ -40,13 +40,45 @@ export function InterventionToolbar() {
     setBusy(null);
   }, [scene, busy, triggerIntervention]);
 
+  const handleMoveTable = useCallback(() => {
+    if (!scene || busy) return;
+    setBusy("move_table");
+    // Find first table and move it to a random position within bounds
+    const table = scene.environment.objects.find((o) => o.type === "table");
+    if (table) {
+      const newX = Math.random() * scene.environment.bounds.width * 0.6 + scene.environment.bounds.width * 0.2;
+      const newZ = Math.random() * scene.environment.bounds.depth * 0.6 + scene.environment.bounds.depth * 0.2;
+      triggerIntervention("move_table", { objectId: table.id, position: { x: newX, z: newZ } });
+    }
+    setBusy(null);
+  }, [scene, busy, triggerIntervention]);
+
+  const handleMarkCongested = useCallback(() => {
+    if (!scene || busy) return;
+    setBusy("mark_congested");
+    // Find first non-exit zone with occupants
+    const zones = scene.environment.semanticZones;
+    const zone = zones.find((z) => z.type !== "exit" && z.type !== "entry");
+    if (zone) {
+      triggerIntervention("mark_congested", { zoneId: zone.id });
+    }
+    setBusy(null);
+  }, [scene, busy, triggerIntervention]);
+
+  const handleMakeExitAttractive = useCallback(() => {
+    if (!scene || busy) return;
+    setBusy("make_exit_attractive");
+    triggerIntervention("make_exit_attractive", {});
+    setBusy(null);
+  }, [scene, busy, triggerIntervention]);
+
   const handleFastForward = useCallback(() => {
     if (busy) return;
     fastForward(10);
   }, [busy, fastForward]);
 
   return (
-    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2">
+    <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-wrap items-center justify-center gap-2">
       <ToolbarButton
         label="Block Corridor"
         loading={busy === "block_corridor"}
@@ -56,6 +88,21 @@ export function InterventionToolbar() {
         label="Add People"
         loading={busy === "add_people"}
         onClick={handleAddPeople}
+      />
+      <ToolbarButton
+        label="Move Table"
+        loading={busy === "move_table"}
+        onClick={handleMoveTable}
+      />
+      <ToolbarButton
+        label="Mark Congested"
+        loading={busy === "mark_congested"}
+        onClick={handleMarkCongested}
+      />
+      <ToolbarButton
+        label="Exit Attractive"
+        loading={busy === "make_exit_attractive"}
+        onClick={handleMakeExitAttractive}
       />
       <ToolbarButton
         label="Fast Forward 10s"

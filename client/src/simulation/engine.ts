@@ -5,6 +5,7 @@ import { computeMovement } from "./movement";
 import { invalidatePath, clearAllPaths } from "./pathfinding";
 import {
   detectInteractionTriggers,
+  detectSharedReactions,
   createInteraction,
   tickInteraction,
   getInteractionAnimationState,
@@ -115,6 +116,89 @@ function isPointInPolygon(
   return inside;
 }
 
+// ── Queue Assignment ────────────────────────────────────────────────────────
+
+/** Per-zone queue lists tracking arrival order. */
+const zoneQueues = new Map<string, string[]>();
+
+/**
+ * For each agent whose goal targets a service zone, assign a queue position.
+ * Agents already in a queue keep their position (advancing as earlier agents leave).
+ */
+function assignQueues(agents: Map<string, AgentModel>, world: WorldState): void {
+  // Find all service zones
+  const serviceZones = world.environment.semanticZones.filter((z) => z.type === "service");
+  if (serviceZones.length === 0) return;
+
+  const serviceZoneIds = new Set(serviceZones.map((z) => z.id));
+
+  // Remove agents from queues if they no longer target the zone
+  for (const [zoneId, queue] of zoneQueues) {
+    const filtered = queue.filter((agentId) => {
+      const agent = agents.get(agentId);
+      if (!agent) return false;
+      return agent.runtime.queueTargetZoneId === zoneId;
+    });
+    if (filtered.length === 0) {
+      zoneQueues.delete(zoneId);
+    } else {
+      zoneQueues.set(zoneId, filtered);
+    }
+  }
+
+  // Add new agents to queues
+  for (const [id, agent] of agents) {
+    const goal = agent.mind.primaryGoal;
+
+    // Agent wants to approach a service zone
+    if (
+      (goal.type === "approach_counter" || goal.type === "find_seat") &&
+      goal.targetZoneId &&
+      serviceZoneIds.has(goal.targetZoneId)
+    ) {
+      // Already in a queue for this zone?
+      if (agent.runtime.queueTargetZoneId === goal.targetZoneId) continue;
+
+      // Clear previous queue assignment
+      if (agent.runtime.queueTargetZoneId !== null) {
+        const prevQueue = zoneQueues.get(agent.runtime.queueTargetZoneId);
+        if (prevQueue) {
+          const idx = prevQueue.indexOf(id);
+          if (idx !== -1) prevQueue.splice(idx, 1);
+        }
+      }
+
+      // Add to new queue
+      const queue = zoneQueues.get(goal.targetZoneId) ?? [];
+      queue.push(id);
+      zoneQueues.set(goal.targetZoneId, queue);
+
+      agent.runtime.queueTargetZoneId = goal.targetZoneId;
+    } else {
+      // Agent no longer targeting a service zone — clear queue assignment
+      if (agent.runtime.queueTargetZoneId !== null) {
+        const prevQueue = zoneQueues.get(agent.runtime.queueTargetZoneId);
+        if (prevQueue) {
+          const idx = prevQueue.indexOf(id);
+          if (idx !== -1) prevQueue.splice(idx, 1);
+        }
+        agent.runtime.queueTargetZoneId = null;
+        agent.runtime.queuePosition = null;
+      }
+    }
+  }
+
+  // Assign queue positions based on order in each queue
+  for (const [_zoneId, queue] of zoneQueues) {
+    for (let i = 0; i < queue.length; i++) {
+      const agent = agents.get(queue[i]);
+      if (agent) {
+        agent.runtime.queuePosition = i;
+      }
+    }
+  }
+}
+
 // ── Goal Management ────────────────────────────────────────────────────────────
 
 function mapActionToGoal(
@@ -208,8 +292,7 @@ function checkReplanConditions(
   }
 
   // Path becomes blocked
-  const stuckThreshold = 5;
-  if (agent.runtime.blocked && agent.locomotion.stuckTickCount >= stuckThreshold) {
+  if (agent.runtime.blocked && agent.locomotion.stuckTickCount >= world.stuckTickThreshold) {
     return true;
   }
 
@@ -268,7 +351,7 @@ function determineAnimationState(
 
 // ── Engine Tick ────────────────────────────────────────────────────────────────
 
-function engineTick(tickMs: number): void {
+function engineTick(tickMs: number, skipCognitive = false): void {
   const state = useNextStateStore.getState();
   const { simRunning, simSpeed, agents, simClock, scene } = state;
   if (!simRunning || !scene) return;
@@ -288,6 +371,7 @@ function engineTick(tickMs: number): void {
     objectOccupancy: state.objectOccupancy,
     goalTtlDefaultSec: config.goalTtlDefaultSec,
     collisionAvoidanceRadius: config.collisionAvoidanceRadius,
+    stuckTickThreshold: config.stuckTickThreshold,
   };
 
   // ── Phase 1: Process existing interactions ─────────────────────────────────
@@ -341,6 +425,9 @@ function engineTick(tickMs: number): void {
     }
   }
   activeInteractions = updatedInteractions;
+
+  // ── Phase 1.5: Queue assignment ───────────────────────────────────────────
+  assignQueues(agents, world);
 
   // ── Phase 2: Per-agent tick ────────────────────────────────────────────────
   for (const [id, agent] of agents) {
@@ -449,7 +536,11 @@ function engineTick(tickMs: number): void {
   }
 
   // ── Phase 3: Detect new interaction triggers ───────────────────────────────
-  const triggers = detectInteractionTriggers(world);
+  const interventionZoneId = useNextStateStore.getState().interventionZoneId ?? null;
+  const triggers = [
+    ...detectInteractionTriggers(world),
+    ...detectSharedReactions(world, interventionZoneId),
+  ];
   for (const trigger of triggers) {
     const interaction = createInteraction(trigger, tickMs);
     interaction.startTick = simClock;
@@ -482,7 +573,9 @@ function engineTick(tickMs: number): void {
   // ── Phase 5: Check cognitive refresh triggers ─────────────────────────────
   // Fire-and-forget: checkCognitiveRefresh internally gates on
   // cognitiveUpdateWindowSec so this is cheap on most ticks.
-  checkCognitiveRefresh();
+  if (!skipCognitive) {
+    checkCognitiveRefresh();
+  }
 }
 
 // ── Recent Events Ring Buffer ──────────────────────────────────────────────────
@@ -512,6 +605,7 @@ export function startSimulation(): void {
   // Reset engine state
   activeInteractions = [];
   replanFlags.clear();
+  zoneQueues.clear();
   clearAllPaths();
   resetInteractionState();
 
@@ -525,6 +619,18 @@ export function stopSimulation(): void {
     clearInterval(intervalId);
     intervalId = null;
   }
+}
+
+/**
+ * Run N ticks synchronously (for fast-forward).
+ * Skips cognitive refresh during batch to avoid API spam.
+ */
+export function runTicksBatch(count: number, tickMs: number): void {
+  for (let i = 0; i < count; i++) {
+    engineTick(tickMs, true);
+  }
+  // Run one cognitive refresh at the end
+  checkCognitiveRefresh();
 }
 
 /**

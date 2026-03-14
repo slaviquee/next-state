@@ -63,15 +63,15 @@ export const AssetBindingsSchema = z.object({
 });
 
 export const SimulationConfigSchema = z.object({
-  tickIntervalMs: z.number(),
-  maxAgents: z.number(),
+  tickIntervalMs: z.number().min(100).max(200),
+  maxAgents: z.number().min(1),
   pathfindingAlgorithm: z.literal("astar"),
-  collisionAvoidanceRadius: z.number(),
-  cognitiveUpdateWindowSec: z.number(),
-  maxCognitiveUpdatesPerWindow: z.number(),
-  microBehaviorChancePerTick: z.number(),
-  goalTtlDefaultSec: z.number(),
-  stuckTickThreshold: z.number(),
+  collisionAvoidanceRadius: z.number().min(0),
+  cognitiveUpdateWindowSec: z.number().min(0),
+  maxCognitiveUpdatesPerWindow: z.number().min(1),
+  microBehaviorChancePerTick: z.number().min(0).max(1),
+  goalTtlDefaultSec: z.number().min(1),
+  stuckTickThreshold: z.number().min(1),
 });
 
 export const CompiledScenePackageSchema = z.object({
