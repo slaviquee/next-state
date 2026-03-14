@@ -1,5 +1,18 @@
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
+import {
+  Polygon2DSchema,
+  PortalSchema,
+  SceneObjectSchema,
+  SemanticZoneSchema,
+  SceneContextModelSchema,
+  StyleProfileSchema,
+  AgentVisualProfileSchema,
+  AgentSocialProfileSchema,
+  AgentLocomotionStateSchema,
+  AgentRuntimeStateSchema,
+  AgentMindStateSchema,
+} from "@next-state/shared";
 
 // ---------------------------------------------------------------------------
 // Video Analysis Raw Output — returned by gemini-3.1-pro-preview
@@ -185,6 +198,54 @@ export const MindInitOutputSchema = z.object({
 export type MindInitOutput = z.infer<typeof MindInitOutputSchema>;
 
 // ---------------------------------------------------------------------------
+// Structuring Interpretation Output — smaller than full CompiledScenePackage
+// ---------------------------------------------------------------------------
+
+const SourceVideoOverrideSchema = z.object({
+  durationSec: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  fpsSampled: z.number().optional(),
+});
+
+const StructuringEnvironmentInterpretationSchema = z.object({
+  spaceType: VideoAnalysisOutputSchema.shape.spaceType.optional(),
+  floorPlan: Polygon2DSchema.optional(),
+  walkableZones: z.array(Polygon2DSchema).optional(),
+  blockedZones: z.array(Polygon2DSchema).optional(),
+  entrances: z.array(PortalSchema.deepPartial()).optional(),
+  exits: z.array(PortalSchema.deepPartial()).optional(),
+  objects: z.array(SceneObjectSchema.deepPartial()).optional(),
+  semanticZones: z.array(SemanticZoneSchema.deepPartial()).optional(),
+});
+
+const StructuringAgentInterpretationSchema = z.object({
+  id: z.string(),
+  visual: AgentVisualProfileSchema.deepPartial().optional(),
+  social: AgentSocialProfileSchema.deepPartial().optional(),
+  locomotion: AgentLocomotionStateSchema.deepPartial().optional(),
+  runtime: AgentRuntimeStateSchema.deepPartial().optional(),
+  mind: AgentMindStateSchema.deepPartial().optional(),
+});
+
+export const StructuringInterpretationOutputSchema = z.object({
+  sourceVideo: SourceVideoOverrideSchema.optional(),
+  sceneContext: SceneContextModelSchema.deepPartial().optional(),
+  environment: StructuringEnvironmentInterpretationSchema.optional(),
+  agents: z.array(StructuringAgentInterpretationSchema).optional(),
+  style: StyleProfileSchema.deepPartial().optional(),
+  compileMetadata: z.object({
+    sceneConfidence: z.number().min(0).max(1).optional(),
+    geminiModel: z.string().optional(),
+    uncertainty: z.array(z.string()).optional(),
+  }).optional(),
+});
+
+export type StructuringInterpretationOutput = z.infer<
+  typeof StructuringInterpretationOutputSchema
+>;
+
+// ---------------------------------------------------------------------------
 // Derived JSON Schemas for Gemini structured output
 // ---------------------------------------------------------------------------
 
@@ -200,5 +261,10 @@ export const styleExtractionJsonSchema = zodToJsonSchema(
 
 export const mindInitJsonSchema = zodToJsonSchema(
   MindInitOutputSchema,
+  { target: "openApi3", $refStrategy: "none" }
+);
+
+export const structuringInterpretationJsonSchema = zodToJsonSchema(
+  StructuringInterpretationOutputSchema,
   { target: "openApi3", $refStrategy: "none" }
 );

@@ -67,6 +67,15 @@ For each distinct person visible at any point in the video:
 
 Track people across frames — if the same person appears at different timestamps, report them only once with their most representative appearance.
 
+### Dense-scene counting guidance
+
+In busy rooms, undercounting is worse than slight overcounting. Follow these rules:
+- Include partially occluded people if a head/torso/upper body is clearly visible
+- Count seated attendees at long shared tables individually whenever they can be distinguished
+- Count people watching a presentation even if only their upper bodies are visible
+- Prefer separate person entries over collapsing a visible crowd into a vague group
+- If crowdDensity is "dense", your persons array should usually contain substantially more than 5 entries unless the camera truly only shows a tiny subsection of the room
+
 ## Group detection
 
 For each social group detected:
@@ -94,6 +103,7 @@ Divide the visible space into semantic zones:
 - occupantPersonIndices: Which person indices are currently in this zone
 
 Every part of the visible floor space should belong to at least one zone. Ensure zones cover the entire scene — do not leave gaps.
+When tables or seating areas are visibly larger than the individually detected furniture count suggests, reflect that in estimatedCapacity.
 
 ## Scene context
 
@@ -120,4 +130,5 @@ Provide holistic scene understanding:
 6. If uncertain, set confidence lower but still include the detection
 7. Ensure personIndex values are sequential starting from 0
 8. Ensure groupIndex values are consistent between persons and groups arrays
-9. Return valid JSON matching the provided schema exactly`;
+9. For dense crowds, prefer recall over extreme conservatism — include plausible visible attendees rather than omitting them
+10. Return valid JSON matching the provided schema exactly`;
