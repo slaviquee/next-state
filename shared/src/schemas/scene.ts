@@ -27,6 +27,10 @@ export const StyleProfileSchema = z.object({
     floor: z.string().optional(),
     accent: z.string().optional(),
     lightingMood: z.enum(["neutral", "warm", "cool", "dim", "bright"]).optional(),
+    lightingDirection: z.enum(["overhead", "left", "right", "front", "back", "diffuse"]).optional(),
+    overallWarmth: z.number().min(0).max(1).optional(),
+    floorMaterial: z.enum(["wood", "tile", "carpet", "concrete", "stone", "unknown"]).optional(),
+    wallMaterial: z.enum(["painted", "brick", "wood_panel", "glass", "concrete", "unknown"]).optional(),
   }),
   dominantPalette: z.array(z.string()),
   objectOverrides: z.array(z.object({

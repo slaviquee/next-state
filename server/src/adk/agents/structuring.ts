@@ -23,6 +23,14 @@ const DEFAULT_OBJECT_SCALES: Record<string, { x: number; y: number; z: number }>
   plant: { x: 0.3, y: 0.6, z: 0.3 },
   door: { x: 0.9, y: 2.0, z: 0.15 },
   wall: { x: 1.0, y: 3.0, z: 0.15 },
+  bookshelf: { x: 0.8, y: 1.8, z: 0.35 },
+  whiteboard: { x: 1.8, y: 1.2, z: 0.05 },
+  window: { x: 1.5, y: 1.5, z: 0.1 },
+  rug: { x: 2.0, y: 0.02, z: 1.5 },
+  trash_can: { x: 0.3, y: 0.6, z: 0.3 },
+  light_fixture: { x: 0.5, y: 0.1, z: 0.5 },
+  stool: { x: 0.35, y: 0.65, z: 0.35 },
+  cabinet: { x: 0.6, y: 0.9, z: 0.5 },
   unknown: { x: 0.5, y: 0.5, z: 0.5 },
 };
 
@@ -77,6 +85,12 @@ const GOAL_TYPES = [
 const REACTION_STYLES = ["calm", "hesitant", "follow_others", "goal_directed", "anxious"] as const;
 const ANIMATION_STATES = ["idle", "walk", "sit", "turn", "wait", "react", "talk", "glance", "fidget"] as const;
 const RELATIONSHIPS = ["friend", "coworker", "staff-customer", "stranger", "unknown"] as const;
+const HAIR_LENGTHS = ["short", "medium", "long"] as const;
+const OBJECT_MATERIALS = ["wood", "metal", "plastic", "fabric", "glass", "stone", "unknown"] as const;
+const OBJECT_SHAPES = ["rectangular", "round", "oval", "L_shaped", "irregular", "unknown"] as const;
+const LIGHTING_DIRECTIONS = ["overhead", "left", "right", "front", "back", "diffuse"] as const;
+const FLOOR_MATERIALS = ["wood", "tile", "carpet", "concrete", "stone", "unknown"] as const;
+const WALL_MATERIALS = ["painted", "brick", "wood_panel", "glass", "concrete", "unknown"] as const;
 const DEPTH_HINTS = ["near", "mid", "far"] as const;
 const PROJECTION_SOURCES = ["gemini_3d", "heuristic_2d"] as const;
 
@@ -450,6 +464,8 @@ function normalizeSceneObject(
     object.styleHints = {
       primaryColor: asString(value.styleHints.primaryColor) ?? object.styleHints?.primaryColor,
       secondaryColor: asString(value.styleHints.secondaryColor) ?? object.styleHints?.secondaryColor,
+      material: asEnum(value.styleHints.material, OBJECT_MATERIALS) ?? object.styleHints?.material,
+      shape: asEnum(value.styleHints.shape, OBJECT_SHAPES) ?? object.styleHints?.shape,
     };
   }
 
@@ -673,6 +689,16 @@ function normalizeAgent(
         bottom: asString(visual.clothingColors.bottom) ?? agent.visual.clothingColors.bottom,
         accent: asString(visual.clothingColors.accent) ?? agent.visual.clothingColors.accent,
       };
+    }
+
+    const hairColor = asString(visual.hairColor);
+    if (hairColor) {
+      agent.visual.hairColor = hairColor;
+    }
+
+    const hairLength = asEnum(visual.hairLength, HAIR_LENGTHS);
+    if (hairLength) {
+      agent.visual.hairLength = hairLength;
     }
 
     const props = asStringArray(visual.props);
@@ -1238,6 +1264,10 @@ function normalizeStructuredSceneCandidate(
         floor: asString(raw.style.environmentPalette.floor) ?? scene.style.environmentPalette.floor,
         accent: asString(raw.style.environmentPalette.accent) ?? scene.style.environmentPalette.accent,
         lightingMood: asEnum(raw.style.environmentPalette.lightingMood, LIGHTING_MOODS) ?? scene.style.environmentPalette.lightingMood,
+        lightingDirection: asEnum(raw.style.environmentPalette.lightingDirection, LIGHTING_DIRECTIONS) ?? scene.style.environmentPalette.lightingDirection,
+        overallWarmth: asFiniteNumber(raw.style.environmentPalette.overallWarmth) ?? scene.style.environmentPalette.overallWarmth,
+        floorMaterial: asEnum(raw.style.environmentPalette.floorMaterial, FLOOR_MATERIALS) ?? scene.style.environmentPalette.floorMaterial,
+        wallMaterial: asEnum(raw.style.environmentPalette.wallMaterial, WALL_MATERIALS) ?? scene.style.environmentPalette.wallMaterial,
       };
     }
 
@@ -1450,18 +1480,18 @@ function targetAgentCountForDensity(
 ): number {
   const minimumByDensity = {
     sparse: detectedCount,
-    moderate: Math.max(detectedCount, 4),
-    dense: Math.max(detectedCount, 8),
+    moderate: Math.max(detectedCount, 6),
+    dense: Math.max(detectedCount, 12),
   } satisfies Record<VideoAnalysisOutput["sceneContext"]["crowdDensity"], number>;
 
   const capacityLimit = semanticZones.reduce((sum, zone) => sum + (zone.capacity ?? 0), 0);
   const softCap =
     capacityLimit > 0
-      ? Math.min(capacityLimit, 12)
+      ? Math.min(capacityLimit, 20)
       : density === "dense"
-        ? 12
+        ? 20
         : density === "moderate"
-          ? 6
+          ? 10
           : detectedCount;
 
   return Math.max(detectedCount, Math.min(minimumByDensity[density], softCap));
@@ -1503,6 +1533,227 @@ function buildSyntheticActivity(
     return "helping coordinate activity near the service area";
   }
   return "participating in the event";
+}
+
+function inferAdditionalFurniture(
+  objects: CompiledScenePackage["environment"]["objects"],
+  semanticZones: SemanticZoneModel[],
+  spaceType: VideoAnalysisOutput["spaceType"],
+  bounds: { width: number; depth: number; height: number },
+  dominantPalette: string[],
+): CompiledScenePackage["environment"]["objects"] {
+  const additional: CompiledScenePackage["environment"]["objects"] = [];
+  let nextId = objects.length + 1;
+
+  const pickColor = (index: number): string | undefined =>
+    dominantPalette.length > 0
+      ? dominantPalette[index % dominantPalette.length]
+      : undefined;
+
+  const findNearbyColor = (
+    type: string,
+    fallbackIndex: number,
+  ): string | undefined => {
+    const match = objects.find((o) => o.type === type && o.styleHints?.primaryColor);
+    return match?.styleHints?.primaryColor ?? pickColor(fallbackIndex);
+  };
+
+  // 1. Chair multiplication: for each table/desk, compute seats from width
+  const tables = objects.filter((o) => o.type === "table" || o.type === "desk");
+  const existingChairs = objects.filter((o) => o.type === "chair" || o.type === "stool");
+
+  for (const table of tables) {
+    const tableWidth = table.scale.x;
+    const expectedSeats = Math.floor(tableWidth / 0.6);
+    // Count chairs already near this table (within 1.5m)
+    const nearbyChairs = existingChairs.filter(
+      (c) => distance2d(c.position, table.position) < 1.5,
+    );
+    const seatsToAdd = Math.max(0, expectedSeats - nearbyChairs.length);
+
+    for (let s = 0; s < seatsToAdd; s++) {
+      const side = s % 2 === 0 ? 1 : -1; // alternate sides of table
+      const along = ((Math.floor(s / 2) + 1) / (Math.ceil(seatsToAdd / 2) + 1)) * tableWidth - tableWidth / 2;
+      const chairX = clamp(table.position.x + along, 0.3, bounds.width - 0.3);
+      const chairZ = clamp(table.position.z + side * (table.scale.z / 2 + 0.35), 0.3, bounds.depth - 0.3);
+
+      additional.push({
+        id: `obj_${nextId++}`,
+        type: "chair",
+        position: { x: chairX, y: 0, z: chairZ },
+        rotationY: side > 0 ? Math.PI : 0,
+        scale: { ...DEFAULT_OBJECT_SCALES.chair },
+        interactable: true,
+        blocksMovement: false,
+        occupiedByAgentId: null,
+        styleHints: {
+          primaryColor: findNearbyColor("chair", s),
+          material: "wood",
+          shape: "rectangular",
+        },
+        spatialEstimate: {
+          position3d: { x: chairX, y: 0, z: chairZ },
+          confidence3d: 0.3,
+          projectionSource: "heuristic_2d",
+          videoBoundingBox: { xMin: 0, xMax: 0, yMin: 0, yMax: 0 },
+        },
+      });
+    }
+  }
+
+  // 2. Zone-based infill: for seating zones with capacity > current object count
+  for (const zone of semanticZones) {
+    if (zone.type !== "seating") continue;
+    const capacity = zone.capacity ?? 0;
+    const zoneBounds = getPolygonBounds(zone.polygon);
+    const objectsInZone = [...objects, ...additional].filter((o) => {
+      return (
+        o.position.x >= zoneBounds.minX &&
+        o.position.x <= zoneBounds.maxX &&
+        o.position.z >= zoneBounds.minZ &&
+        o.position.z <= zoneBounds.maxZ
+      );
+    });
+    const seatCount = objectsInZone.filter(
+      (o) => o.type === "chair" || o.type === "stool" || o.type === "sofa",
+    ).length;
+    const targetSeats = Math.floor(capacity * 0.6);
+    const tablesInZone = objectsInZone.filter(
+      (o) => o.type === "table" || o.type === "desk",
+    ).length;
+
+    // Add table+chair sets if zone is under-furnished
+    if (seatCount < targetSeats && tablesInZone === 0 && targetSeats >= 2) {
+      const setsToAdd = Math.min(3, Math.ceil((targetSeats - seatCount) / 4));
+      for (let s = 0; s < setsToAdd; s++) {
+        const pos = samplePositionInPolygon(zone.polygon, s, setsToAdd);
+        additional.push({
+          id: `obj_${nextId++}`,
+          type: "table",
+          position: { x: pos.x, y: 0, z: pos.z },
+          rotationY: 0,
+          scale: { ...DEFAULT_OBJECT_SCALES.table },
+          interactable: true,
+          blocksMovement: true,
+          occupiedByAgentId: null,
+          styleHints: {
+            primaryColor: findNearbyColor("table", s),
+            material: "wood",
+            shape: "rectangular",
+          },
+          spatialEstimate: {
+            position3d: { x: pos.x, y: 0, z: pos.z },
+            confidence3d: 0.3,
+            projectionSource: "heuristic_2d",
+            videoBoundingBox: { xMin: 0, xMax: 0, yMin: 0, yMax: 0 },
+          },
+        });
+        // Add 2 chairs per table
+        for (let c = 0; c < 2; c++) {
+          const side = c === 0 ? 1 : -1;
+          const cx = clamp(pos.x, 0.3, bounds.width - 0.3);
+          const cz = clamp(pos.z + side * 0.75, 0.3, bounds.depth - 0.3);
+          additional.push({
+            id: `obj_${nextId++}`,
+            type: "chair",
+            position: { x: cx, y: 0, z: cz },
+            rotationY: side > 0 ? Math.PI : 0,
+            scale: { ...DEFAULT_OBJECT_SCALES.chair },
+            interactable: true,
+            blocksMovement: false,
+            occupiedByAgentId: null,
+            styleHints: {
+              primaryColor: findNearbyColor("chair", c),
+              material: "wood",
+              shape: "rectangular",
+            },
+            spatialEstimate: {
+              position3d: { x: cx, y: 0, z: cz },
+              confidence3d: 0.3,
+              projectionSource: "heuristic_2d",
+              videoBoundingBox: { xMin: 0, xMax: 0, yMin: 0, yMax: 0 },
+            },
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Venue-type defaults: ensure minimum furniture by space type
+  const typeCount = (type: string) =>
+    [...objects, ...additional].filter((o) => o.type === type).length;
+
+  const ensureMinimum = (
+    type: SceneObjectModel["type"],
+    minCount: number,
+    defaultY: number,
+    wallMounted: boolean,
+  ) => {
+    const deficit = minCount - typeCount(type);
+    for (let i = 0; i < deficit; i++) {
+      const x = wallMounted
+        ? (i % 2 === 0 ? 0.3 : bounds.width - 0.3)
+        : clamp(bounds.width * ((i + 1) / (deficit + 1)), 0.5, bounds.width - 0.5);
+      const z = wallMounted
+        ? clamp(bounds.depth * ((i + 1) / (deficit + 1)), 0.5, bounds.depth - 0.5)
+        : clamp(bounds.depth * ((i + 1) / (deficit + 1)), 0.5, bounds.depth - 0.5);
+      const scale = DEFAULT_OBJECT_SCALES[type] ?? DEFAULT_OBJECT_SCALES.unknown;
+      additional.push({
+        id: `obj_${nextId++}`,
+        type,
+        position: { x, y: defaultY, z },
+        rotationY: 0,
+        scale: { ...scale },
+        interactable: type !== "plant" && type !== "trash_can",
+        blocksMovement: type === "table" || type === "desk" || type === "counter" || type === "bookshelf",
+        occupiedByAgentId: null,
+        styleHints: {
+          primaryColor: findNearbyColor(type, i),
+          material: scale === DEFAULT_OBJECT_SCALES.whiteboard ? "plastic" : "wood",
+          shape: "rectangular",
+        },
+        spatialEstimate: {
+          position3d: { x, y: defaultY, z },
+          confidence3d: 0.3,
+          projectionSource: "heuristic_2d",
+          videoBoundingBox: { xMin: 0, xMax: 0, yMin: 0, yMax: 0 },
+        },
+      });
+    }
+  };
+
+  switch (spaceType) {
+    case "cafe":
+      ensureMinimum("counter", 1, 0, false);
+      ensureMinimum("table", 3, 0, false);
+      ensureMinimum("chair", 6, 0, false);
+      break;
+    case "office":
+      ensureMinimum("whiteboard", 1, 1.2, true);
+      ensureMinimum("screen", 1, 1.5, true);
+      ensureMinimum("desk", 3, 0, false);
+      ensureMinimum("chair", 4, 0, false);
+      break;
+    case "meeting_room":
+      ensureMinimum("whiteboard", 1, 1.2, true);
+      ensureMinimum("screen", 1, 1.5, true);
+      ensureMinimum("table", 1, 0, false);
+      ensureMinimum("chair", 6, 0, false);
+      break;
+    case "classroom":
+      ensureMinimum("desk", 4, 0, false);
+      ensureMinimum("chair", 8, 0, false);
+      ensureMinimum("whiteboard", 1, 1.2, true);
+      break;
+    case "lobby":
+      ensureMinimum("plant", 1, 0, false);
+      ensureMinimum("sofa", 1, 0, false);
+      ensureMinimum("chair", 2, 0, false);
+      break;
+    // corridor & unknown: no defaults
+  }
+
+  return additional;
 }
 
 function buildHeuristicFallbackScene(
@@ -1553,6 +1804,8 @@ function buildHeuristicFallbackScene(
         styleHints: {
           primaryColor: colorOverride?.primaryColor ?? object.colorHint,
           secondaryColor: colorOverride?.secondaryColor ?? object.secondaryColorHint,
+          material: object.material,
+          shape: object.shape,
         },
         spatialEstimate: {
           position3d: projectBoxToPosition(object.boundingBox, bounds, y),
@@ -1563,21 +1816,6 @@ function buildHeuristicFallbackScene(
       };
     },
   );
-
-  const blockedZones = objects
-    .filter((object) => object.blocksMovement)
-    .map((object) => {
-      const halfX = Math.max(object.scale.x / 2, 0.2);
-      const halfZ = Math.max(object.scale.z / 2, 0.2);
-      return {
-        points: [
-          { x: clamp(object.position.x - halfX, 0, bounds.width), z: clamp(object.position.z - halfZ, 0, bounds.depth) },
-          { x: clamp(object.position.x + halfX, 0, bounds.width), z: clamp(object.position.z - halfZ, 0, bounds.depth) },
-          { x: clamp(object.position.x + halfX, 0, bounds.width), z: clamp(object.position.z + halfZ, 0, bounds.depth) },
-          { x: clamp(object.position.x - halfX, 0, bounds.width), z: clamp(object.position.z + halfZ, 0, bounds.depth) },
-        ],
-      };
-    });
 
   const semanticZones =
     videoAnalysis.zones.length > 0
@@ -1601,6 +1839,34 @@ function buildHeuristicFallbackScene(
             queueIds: [],
           },
         ];
+
+  // Deterministic furniture infill — adds chairs near tables, fills zones, ensures venue minimums
+  const additionalFurniture = inferAdditionalFurniture(
+    objects,
+    semanticZones,
+    videoAnalysis.spaceType,
+    bounds,
+    styleExtraction.dominantPalette,
+  );
+  if (additionalFurniture.length > 0) {
+    objects.push(...additionalFurniture);
+  }
+
+  // Recompute blocked zones now that furniture infill is done
+  const blockedZones = objects
+    .filter((object) => object.blocksMovement)
+    .map((object) => {
+      const halfX = Math.max(object.scale.x / 2, 0.2);
+      const halfZ = Math.max(object.scale.z / 2, 0.2);
+      return {
+        points: [
+          { x: clamp(object.position.x - halfX, 0, bounds.width), z: clamp(object.position.z - halfZ, 0, bounds.depth) },
+          { x: clamp(object.position.x + halfX, 0, bounds.width), z: clamp(object.position.z - halfZ, 0, bounds.depth) },
+          { x: clamp(object.position.x + halfX, 0, bounds.width), z: clamp(object.position.z + halfZ, 0, bounds.depth) },
+          { x: clamp(object.position.x - halfX, 0, bounds.width), z: clamp(object.position.z + halfZ, 0, bounds.depth) },
+        ],
+      };
+    });
 
   const entrances = videoAnalysis.entrancesExits
     .filter((portal) => portal.isEntrance)
@@ -1747,6 +2013,8 @@ function buildHeuristicFallbackScene(
             accent: clothingOverride?.accentColor ?? person.accentColor,
           },
           clothingStyle: person.clothingStyle,
+          hairColor: person.hairColor,
+          hairLength: person.hairLength,
           props: person.props,
           initialPose: person.pose,
           spatialEstimate: {
@@ -1820,9 +2088,19 @@ function buildHeuristicFallbackScene(
       zone.type === "seating" ||
       zone.type === "standing" ||
       zone.type === "circulation" ||
-      zone.type === "waiting",
+      zone.type === "waiting" ||
+      zone.type === "service" ||
+      zone.type === "unknown",
     );
     const activeZones = candidateZones.length > 0 ? candidateZones : semanticZones;
+
+    // Weight zones by capacity so agents spread proportionally
+    const zoneWeights = activeZones.map((z) => Math.max(z.capacity ?? 2, 2));
+    const totalWeight = zoneWeights.reduce((a, b) => a + b, 0);
+    const zoneSlotLimits = activeZones.map((_, i) =>
+      Math.max(1, Math.round((zoneWeights[i] / totalWeight) * syntheticAgentCount)),
+    );
+
     const syntheticSlotsByZone = new Map<string, number>();
     const occupiedObjectIds = new Set(
       agents
@@ -1830,9 +2108,26 @@ function buildHeuristicFallbackScene(
         .filter((objectId): objectId is string => objectId !== null),
     );
 
+    // Pick zone round-robin but respect capacity proportions
+    let zonePointer = 0;
+    const pickNextZone = (): SemanticZoneModel => {
+      for (let attempts = 0; attempts < activeZones.length; attempts++) {
+        const idx = (zonePointer + attempts) % activeZones.length;
+        const used = syntheticSlotsByZone.get(activeZones[idx].id) ?? 0;
+        if (used < zoneSlotLimits[idx]) {
+          zonePointer = (idx + 1) % activeZones.length;
+          return activeZones[idx];
+        }
+      }
+      zonePointer = (zonePointer + 1) % activeZones.length;
+      return activeZones[zonePointer];
+    };
+
+    const paletteLen = Math.max(styleExtraction.dominantPalette.length, 1);
+
     for (let syntheticIndex = 0; syntheticIndex < syntheticAgentCount; syntheticIndex++) {
       const template = agents[syntheticIndex % agents.length];
-      const zone = activeZones[syntheticIndex % activeZones.length];
+      const zone = pickNextZone();
       const zoneSlot = syntheticSlotsByZone.get(zone.id) ?? 0;
       syntheticSlotsByZone.set(zone.id, zoneSlot + 1);
 
@@ -1840,8 +2135,10 @@ function buildHeuristicFallbackScene(
         zone.type === "seating"
           ? "sitting"
           : zone.type === "circulation"
-            ? syntheticIndex % 2 === 0 ? "walking" : "standing"
-            : "standing";
+            ? syntheticIndex % 3 === 0 ? "walking" : syntheticIndex % 3 === 1 ? "standing" : "walking"
+            : zone.type === "waiting"
+              ? syntheticIndex % 3 === 0 ? "walking" : "standing"
+              : "standing";
       const seatObject =
         preferredPose === "sitting"
           ? objects.find(
@@ -1860,10 +2157,22 @@ function buildHeuristicFallbackScene(
       const id = toAgentId(videoAnalysis.persons.length + syntheticIndex);
       const archetype = inferSyntheticArchetype(zone.type, preferredPose);
       const currentIntent = buildSyntheticActivity(zone.type, preferredPose);
-      const paletteColor =
-        styleExtraction.dominantPalette[
-          (syntheticIndex + 1) % Math.max(styleExtraction.dominantPalette.length, 1)
-        ];
+
+      // Vary clothing from palette — cycle through different palette indices for top/bottom/accent
+      const topColor =
+        styleExtraction.dominantPalette[(syntheticIndex * 2 + 1) % paletteLen] ??
+        template.visual.clothingColors.top;
+      const bottomColor =
+        styleExtraction.dominantPalette[(syntheticIndex * 2) % paletteLen] ??
+        template.visual.clothingColors.bottom;
+      const accentColor =
+        styleExtraction.dominantPalette[(syntheticIndex + 3) % paletteLen] ??
+        template.visual.clothingColors.accent;
+
+      // Vary demographics across synthetic agents
+      const syntheticGender = GENDERS[syntheticIndex % GENDERS.length];
+      const syntheticBodyType = BODY_TYPES[syntheticIndex % BODY_TYPES.length];
+      const syntheticHeightBucket = HEIGHT_BUCKETS[syntheticIndex % HEIGHT_BUCKETS.length];
 
       if (seatObject) {
         occupiedObjectIds.add(seatObject.id);
@@ -1875,17 +2184,19 @@ function buildHeuristicFallbackScene(
         id,
         visual: {
           assetId: `char_${id}`,
-          gender: template.visual.gender,
+          gender: syntheticGender,
           ageGroup: template.visual.ageGroup,
-          bodyType: template.visual.bodyType,
-          heightBucket: template.visual.heightBucket,
+          bodyType: syntheticBodyType,
+          heightBucket: syntheticHeightBucket,
           clothingColors: {
-            top: paletteColor ?? template.visual.clothingColors.top,
-            bottom: template.visual.clothingColors.bottom,
-            accent: template.visual.clothingColors.accent,
+            top: topColor,
+            bottom: bottomColor,
+            accent: accentColor,
           },
           clothingStyle: template.visual.clothingStyle,
-          props: template.visual.props,
+          hairColor: template.visual.hairColor,
+          hairLength: HAIR_LENGTHS[syntheticIndex % HAIR_LENGTHS.length],
+          props: preferredPose === "sitting" ? template.visual.props : [],
           initialPose: preferredPose,
           spatialEstimate: {
             position3d: position,
@@ -2054,6 +2365,10 @@ function buildHeuristicFallbackScene(
         floor: styleExtraction.environmentPalette.floor,
         accent: styleExtraction.environmentPalette.accent,
         lightingMood: styleExtraction.environmentPalette.lightingMood,
+        lightingDirection: styleExtraction.lightingDirection,
+        overallWarmth: styleExtraction.overallWarmth,
+        floorMaterial: styleExtraction.floorMaterial,
+        wallMaterial: styleExtraction.wallMaterial,
       },
       dominantPalette: styleExtraction.dominantPalette,
       objectOverrides: styleExtraction.objectColors.map((entry) => ({
@@ -2082,6 +2397,7 @@ function buildHeuristicFallbackScene(
       uncertainty: uniqueStrings([
         reason,
         ...(syntheticAgentCount > 0 ? [`synthetic_background_agents_added:${syntheticAgentCount}`] : []),
+        ...(additionalFurniture.length > 0 ? [`synthetic_furniture_infill:${additionalFurniture.length}`] : []),
       ]),
     },
   };

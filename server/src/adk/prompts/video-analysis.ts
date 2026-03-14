@@ -33,16 +33,31 @@ Use visual cues like door frames (~2m high, ~0.9m wide), standard furniture size
 ## Object detection
 
 For each distinct object visible in the scene, report:
-- label: The object type. Use one of: table, chair, desk, counter, sofa, door, wall, laptop, coffee_machine, screen, plant, unknown
+- label: The object type. Use one of: table, chair, desk, counter, sofa, door, wall, laptop, coffee_machine, screen, plant, bookshelf, whiteboard, window, rug, trash_can, light_fixture, stool, cabinet, unknown
 - boundingBox: The 2D bounding box in normalized 0-1000 coordinates
 - confidence: Your confidence in the detection (0.0-1.0)
 - interactable: true if people can sit at it, use it, order from it, etc.
 - blocksMovement: true if the object prevents walking through its footprint
 - colorHint: Primary color as a hex string (e.g. "#8B4513" for brown wood)
 - secondaryColorHint: Secondary color if applicable
+- material: The primary material of the object: wood, metal, plastic, fabric, glass, stone, or unknown
+- shape: The overall shape of the object: rectangular, round, oval, L_shaped, irregular, or unknown
 - estimatedWidthMeters, estimatedHeightMeters, estimatedDepthMeters: Real-world size estimates
 
 Do NOT report walls, floor, or ceiling as objects. Do NOT duplicate objects that appear in multiple frames — deduplicate across the video timeline.
+
+### Furniture inference rules
+
+You must infer plausible off-screen or partially-occluded furniture, not just literally-visible items:
+- **Seating from table dimensions:** Estimate total seating capacity from each table's length. A typical seat takes ~0.6m of table edge. A 4m-long table should have ~6 chairs even if only 2 are visible. Report individual chair entries for each inferred seat.
+- **Venue-type background objects:** For dense or moderate scenes, infer 3-8 plausible background objects based on venue type:
+  - Hackathon / coworking: power strips, extra monitors, whiteboards, additional desks
+  - Café: additional small tables with chairs, menu boards, counter items
+  - Office / meeting room: whiteboards, screens, cabinets, additional desks
+  - Classroom: rows of desks/chairs to fill the room layout
+  - Lobby: plants, seating areas, signage
+- **Confidence tagging:** Set confidence 0.4-0.6 for inferred objects, 0.8+ for directly visible ones.
+- **Inferred objects still need bounding boxes.** Place them in plausible locations: along table edges for chairs, against walls for whiteboards/screens, in open floor areas for additional tables. Use bounding boxes that reflect their expected position even if that area was not directly on camera.
 
 ## Person detection
 
@@ -61,6 +76,8 @@ For each distinct person visible at any point in the video:
 - accentColor: Optional accent color (bag, hat, scarf) as hex
 - clothingStyle: casual, business, uniform, athletic, or formal
 - props: Array of items they are holding or have nearby (laptop, phone, bag, cup, book, etc.)
+- hairColor: Hair color as a hex string (e.g., "#2C1B0E" for dark brown, "#F5DEB3" for blonde). Omit if hair is not visible (hat, headscarf).
+- hairLength: short (above ears), medium (ear to shoulder), or long (below shoulder). Omit if not visible.
 - apparentActivity: What they appear to be doing (e.g., "typing on laptop", "chatting with person next to them", "waiting at counter")
 - groupIndex: If this person appears to be part of a social group (sitting together, talking, walking together), assign a shared group index (0-based). Set null if the person appears to be alone.
 - facingDirection: Which direction they face relative to camera
@@ -74,7 +91,10 @@ In busy rooms, undercounting is worse than slight overcounting. Follow these rul
 - Count seated attendees at long shared tables individually whenever they can be distinguished
 - Count people watching a presentation even if only their upper bodies are visible
 - Prefer separate person entries over collapsing a visible crowd into a vague group
-- If crowdDensity is "dense", your persons array should usually contain substantially more than 5 entries unless the camera truly only shows a tiny subsection of the room
+- If crowdDensity is "dense", your persons array should contain at least 10 entries
+- If a table has 6 seats but only 2 visible people, infer 2-3 additional partially-occluded seated attendees with confidence 0.4-0.5
+- Count people at tables even if only the tops of their heads or shoulders are visible
+- For crowded areas where the back of the room is partially visible, estimate additional standing or seated people in those areas
 
 ## Group detection
 

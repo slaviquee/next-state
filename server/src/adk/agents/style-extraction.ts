@@ -76,6 +76,8 @@ export async function runStyleExtraction(
           objectColors: [],
           lightingDirection: "overhead",
           overallWarmth: 0.5,
+          floorMaterial: "unknown",
+          wallMaterial: "unknown",
         } satisfies StyleExtractionOutput;
       }
     }

@@ -26,13 +26,15 @@ const BoundingBox2DSchema = z.object({
 });
 
 const DetectedObjectSchema = z.object({
-  label: z.string().describe("Object type: table, chair, desk, counter, sofa, door, wall, laptop, coffee_machine, screen, plant, or unknown"),
+  label: z.string().describe("Object type: table, chair, desk, counter, sofa, door, wall, laptop, coffee_machine, screen, plant, bookshelf, whiteboard, window, rug, trash_can, light_fixture, stool, cabinet, or unknown"),
   boundingBox: BoundingBox2DSchema,
   confidence: z.number().min(0).max(1).describe("Detection confidence 0-1"),
   interactable: z.boolean().describe("Whether people can interact with this object"),
   blocksMovement: z.boolean().describe("Whether this object blocks walking"),
   colorHint: z.string().optional().describe("Primary color of the object as hex string"),
   secondaryColorHint: z.string().optional().describe("Secondary color of the object as hex string"),
+  material: z.enum(["wood", "metal", "plastic", "fabric", "glass", "stone", "unknown"]).optional().describe("Primary material of the object"),
+  shape: z.enum(["rectangular", "round", "oval", "L_shaped", "irregular", "unknown"]).optional().describe("Overall shape of the object"),
   estimatedWidthMeters: z.number().optional().describe("Estimated real-world width in meters"),
   estimatedHeightMeters: z.number().optional().describe("Estimated real-world height in meters"),
   estimatedDepthMeters: z.number().optional().describe("Estimated real-world depth in meters"),
@@ -53,6 +55,8 @@ const DetectedPersonSchema = z.object({
   accentColor: z.string().optional().describe("Accent color as hex if visible"),
   clothingStyle: z.enum(["casual", "business", "uniform", "athletic", "formal"]),
   props: z.array(z.string()).describe("Items held or nearby: laptop, phone, bag, cup, etc."),
+  hairColor: z.string().optional().describe("Hair color as hex string"),
+  hairLength: z.enum(["short", "medium", "long"]).optional().describe("Hair length: short (above ears), medium (ear to shoulder), long (below shoulder)"),
   apparentActivity: z.string().describe("What this person appears to be doing"),
   groupIndex: z.number().nullable().describe("Group index if this person appears to belong to a social group, null if alone"),
   facingDirection: z.enum(["toward_camera", "away_from_camera", "left", "right", "unknown"]),
@@ -140,6 +144,8 @@ export const StyleExtractionOutputSchema = z.object({
   ),
   lightingDirection: z.enum(["overhead", "left", "right", "front", "back", "diffuse"]).describe("Dominant light source direction"),
   overallWarmth: z.number().min(0).max(1).describe("0=very cool/blue, 1=very warm/amber"),
+  floorMaterial: z.enum(["wood", "tile", "carpet", "concrete", "stone", "unknown"]).describe("Floor surface material"),
+  wallMaterial: z.enum(["painted", "brick", "wood_panel", "glass", "concrete", "unknown"]).describe("Wall surface material"),
 });
 
 export type StyleExtractionOutput = z.infer<typeof StyleExtractionOutputSchema>;

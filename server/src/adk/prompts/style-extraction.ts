@@ -48,6 +48,11 @@ Focus on the most visually significant objects: tables, chairs, counters, large 
 - lightingDirection: Where the dominant light source comes from relative to the camera: overhead, left, right, front, back, or diffuse (no clear dominant direction)
 - overallWarmth: A float from 0.0 to 1.0 representing the color temperature. 0.0 = very cool (blue/clinical fluorescent), 0.5 = neutral daylight, 1.0 = very warm (golden hour, incandescent, amber)
 
+## Surface materials
+
+- floorMaterial: Identify the floor surface type: wood (hardwood/laminate planks), tile (ceramic/porcelain tiles), carpet (any textile floor covering), concrete (raw or polished concrete), stone (marble/slate/granite), or unknown
+- wallMaterial: Identify the wall surface type: painted (smooth painted drywall/plaster), brick (exposed brick), wood_panel (wood paneling/wainscoting), glass (glass walls/partitions), concrete (exposed concrete), or unknown
+
 ## Important rules
 
 1. All colors MUST be valid 6-digit hex strings starting with "#" (e.g., "#8B4513")

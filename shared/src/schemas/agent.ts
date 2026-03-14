@@ -29,6 +29,8 @@ export const AgentVisualProfileSchema = z.object({
     accent: z.string().optional(),
   }),
   clothingStyle: z.enum(["casual", "business", "uniform", "athletic", "formal"]).optional(),
+  hairColor: z.string().optional(),
+  hairLength: z.enum(["short", "medium", "long"]).optional(),
   props: z.array(z.string()).optional(),
   initialPose: z.enum(["standing", "sitting", "walking"]),
   spatialEstimate: SpatialEstimateSchema,

@@ -1,9 +1,20 @@
+import { writeFileSync } from "node:fs";
 import type { CompiledScenePackage } from "@next-state/shared";
 import { runVideoAnalysis } from "./agents/video-analysis.js";
 import { runStyleExtraction } from "./agents/style-extraction.js";
 import { runStructuring } from "./agents/structuring.js";
 import { runMindInit } from "./agents/mind-init.js";
 import type { VideoAnalysisOutput, StyleExtractionOutput } from "./schemas.js";
+
+function dumpDebug(label: string, sceneId: string, data: unknown): void {
+  try {
+    const path = `/tmp/next-state-debug-${sceneId}-${label}.json`;
+    writeFileSync(path, JSON.stringify(data, null, 2));
+    console.log(`[DEBUG] Wrote ${label} → ${path}`);
+  } catch {
+    // non-critical
+  }
+}
 
 /**
  * Progress event emitted by the pipeline as it moves through stages.
@@ -67,6 +78,7 @@ export async function runCompilePipeline(
     throw videoSettled.reason;
   }
   const videoAnalysisResult: VideoAnalysisOutput = videoSettled.value;
+  dumpDebug("1-video-analysis", sceneId, videoAnalysisResult);
 
   // Style extraction failure is recoverable — use neutral palette fallback
   let styleExtractionResult: StyleExtractionOutput;
@@ -89,10 +101,13 @@ export async function runCompilePipeline(
       objectColors: [],
       lightingDirection: "overhead",
       overallWarmth: 0.5,
+      floorMaterial: "unknown",
+      wallMaterial: "unknown",
     };
   } else {
     styleExtractionResult = styleSettled.value;
   }
+  dumpDebug("2-style-extraction", sceneId, styleExtractionResult);
 
   // -----------------------------------------------------------------------
   // Step 2: Structuring
@@ -107,6 +122,7 @@ export async function runCompilePipeline(
       sceneId,
       videoDurationSec,
     );
+    dumpDebug("3-structuring", sceneId, structuredScene);
     onProgress({ step: "structuring", status: "complete", progress: 0.7 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -138,6 +154,7 @@ export async function runCompilePipeline(
   let finalScene: CompiledScenePackage;
   try {
     finalScene = await runMindInit(structuredScene);
+    dumpDebug("4-final-scene", sceneId, finalScene);
     onProgress({ step: "mind_initialization", status: "complete", progress: 0.95 });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

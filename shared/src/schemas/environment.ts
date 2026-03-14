@@ -7,7 +7,9 @@ export const SceneObjectSchema = z.object({
   type: z.enum([
     "table", "chair", "desk", "counter", "sofa",
     "door", "wall", "laptop", "coffee_machine",
-    "screen", "plant", "unknown",
+    "screen", "plant", "bookshelf", "whiteboard",
+    "window", "rug", "trash_can", "light_fixture",
+    "stool", "cabinet", "unknown",
   ]),
   position: Vec3Schema,
   rotationY: z.number(),
@@ -18,6 +20,8 @@ export const SceneObjectSchema = z.object({
   styleHints: z.object({
     primaryColor: z.string().optional(),
     secondaryColor: z.string().optional(),
+    material: z.enum(["wood", "metal", "plastic", "fabric", "glass", "stone", "unknown"]).optional(),
+    shape: z.enum(["rectangular", "round", "oval", "L_shaped", "irregular", "unknown"]).optional(),
   }).optional(),
   spatialEstimate: SpatialEstimateSchema.optional(),
 });
