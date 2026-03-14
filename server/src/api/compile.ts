@@ -49,7 +49,7 @@ compileRouter.post("/compile-scene", async (req, res) => {
       }
     };
 
-    runCompilePipeline(job.fileUri, job.fileMimeType, sceneId, onProgress)
+    runCompilePipeline(job.fileUri, job.fileMimeType, sceneId, onProgress, job.videoDurationSec ?? undefined)
       .then((scene) => {
         storeScene(sceneId, scene);
         const currentJob = jobStore.get(jobId);

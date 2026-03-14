@@ -215,7 +215,7 @@ export async function performCognitiveRefresh(
     runtimeSnapshot: {
       simClock,
       agentStates,
-      blockedEdges: scene.environment.navigationGraph.edges
+      blockedEdges: useNextStateStore.getState().navEdges
         .filter((e) => e.blocked)
         .map((e) => `${e.from}->${e.to}`),
       recentEvents,

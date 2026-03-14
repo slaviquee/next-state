@@ -27,6 +27,7 @@ export async function runStructuring(
   videoAnalysis: VideoAnalysisOutput,
   styleExtraction: StyleExtractionOutput,
   sceneId: string,
+  videoDurationSec?: number,
 ): Promise<CompiledScenePackage> {
   let lastError: Error | null = null;
 
@@ -36,6 +37,7 @@ export async function runStructuring(
         JSON.stringify(videoAnalysis, null, 2),
         JSON.stringify(styleExtraction, null, 2),
         sceneId,
+        videoDurationSec,
       );
 
       const prompt =
@@ -87,7 +89,7 @@ export async function runStructuring(
         };
         const fallback: CompiledScenePackage = {
           sceneId,
-          sourceVideo: { durationSec: 0, width: 0, height: 0, fpsSampled: 0 },
+          sourceVideo: { durationSec: videoDurationSec ?? 0, width: 0, height: 0, fpsSampled: 0 },
           sceneContext: {
             estimatedLocation: {
               type: videoAnalysis.sceneContext.locationType,

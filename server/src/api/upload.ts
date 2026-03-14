@@ -38,6 +38,7 @@ uploadRouter.post("/upload-video", upload.single("video"), async (req, res) => {
       currentStep: null,
       progress: 0,
       error: null,
+      videoDurationSec: null,
       startedAt: Date.now(),
     });
 
@@ -71,10 +72,30 @@ uploadRouter.post("/upload-video", upload.single("video"), async (req, res) => {
     job.fileMimeType = uploadedFile.mimeType!;
     job.progress = 0.1;
 
+    // Extract video duration from Gemini Files API metadata
+    const videoMeta = uploadedFile.videoMetadata as Record<string, unknown> | undefined;
+    let videoDurationSec: number | null = null;
+    if (videoMeta?.videoDuration && typeof videoMeta.videoDuration === "string") {
+      const stripped = videoMeta.videoDuration.replace(/s$/, "");
+      videoDurationSec = parseFloat(stripped);
+      if (!Number.isFinite(videoDurationSec)) {
+        videoDurationSec = null;
+      }
+    }
+
+    if (videoDurationSec !== null && videoDurationSec > env.MAX_VIDEO_DURATION_SEC) {
+      job.status = "error";
+      job.error = `Video duration ${videoDurationSec}s exceeds maximum ${env.MAX_VIDEO_DURATION_SEC}s`;
+      res.status(400).json({ error: job.error });
+      return;
+    }
+
+    job.videoDurationSec = videoDurationSec;
+
     res.json({
       jobId,
       fileUri: uploadedFile.uri,
-      warning: `Video duration not validated on server — uploads longer than ${env.MAX_VIDEO_DURATION_SEC}s may produce lower quality results.`,
+      videoDurationSec,
     });
   } catch (err) {
     console.error("Upload error:", err);

@@ -39,6 +39,7 @@ export async function runCompilePipeline(
   fileMimeType: string,
   sceneId: string,
   onProgress: ProgressCallback,
+  videoDurationSec?: number,
 ): Promise<CompiledScenePackage> {
   // -----------------------------------------------------------------------
   // Step 1: Video Analysis + Style Extraction (parallel)
@@ -104,6 +105,7 @@ export async function runCompilePipeline(
       videoAnalysisResult,
       styleExtractionResult,
       sceneId,
+      videoDurationSec,
     );
     onProgress({ step: "structuring", status: "complete", progress: 0.7 });
   } catch (err) {

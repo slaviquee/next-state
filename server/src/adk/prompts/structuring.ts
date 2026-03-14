@@ -13,6 +13,7 @@ export function buildStructuringPrompt(
   videoAnalysisJson: string,
   styleExtractionJson: string,
   sceneId: string,
+  videoDurationSec?: number,
 ): string {
   return `You are a 3D scene structuring expert. You will be given two JSON inputs:
 1. A video analysis containing detected objects, persons, zones, entrances/exits, and scene context
@@ -38,10 +39,10 @@ Use this exact sceneId: "${sceneId}"
 Produce a JSON object that conforms to the CompiledScenePackage schema. You must:
 
 ### 1. Source video metadata
-Set sourceVideo with reasonable defaults since you don't have the raw file:
-- durationSec: 12 (assume short clip)
-- width: 1920
-- height: 1080
+Set sourceVideo:
+- durationSec: ${videoDurationSec !== undefined ? videoDurationSec : "unknown — estimate from video content, default to 10"}
+- width: Estimate from video content (common values: 1920, 1280, 3840). Default to 1920 if unclear.
+- height: Estimate from video content (common values: 1080, 720, 2160). Default to 1080 if unclear.
 - fpsSampled: 2
 
 ### 2. Scene context

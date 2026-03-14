@@ -1,4 +1,6 @@
 import { Canvas } from "@react-three/fiber";
+import * as THREE from "three";
+import { WebGPURenderer } from "three/webgpu";
 import { useNextStateStore } from "../store/useNextStateStore";
 import { Environment } from "./Environment";
 import { AgentCrowd } from "./AgentCrowd";
@@ -21,8 +23,13 @@ export function SceneRenderer() {
         near: 0.1,
         far: 200,
       }}
-      shadows
-      gl={{ antialias: true }}
+      gl={async ({ canvas }) => {
+        const renderer = new WebGPURenderer({ canvas: canvas as HTMLCanvasElement, antialias: true });
+        await renderer.init();
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        return renderer;
+      }}
       style={{ width: "100%", height: "100%" }}
       onPointerMissed={() => useNextStateStore.getState().selectAgent(null)}
     >

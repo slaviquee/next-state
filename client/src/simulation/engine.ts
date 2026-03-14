@@ -380,7 +380,7 @@ function engineTick(tickMs: number, skipCognitive = false): void {
     agents,
     activeInteractions,
     simClock,
-    navGraph: scene.environment.navigationGraph,
+    navGraph: { nodes: scene.environment.navigationGraph.nodes, edges: state.navEdges },
     zoneOccupancy: state.zoneOccupancy,
     objectOccupancy: state.objectOccupancy,
     goalTtlDefaultSec: config.goalTtlDefaultSec,
@@ -494,6 +494,8 @@ function engineTick(tickMs: number, skipCognitive = false): void {
     // 4. Plan/replan path -> 5. Apply movement -> 6. Resolve collisions
     const movement = computeMovement(agent, world, dtSec, needsReplan);
 
+    const wasMoving = agent.locomotion.isMoving;
+
     agent.runtime.position = movement.position;
     agent.runtime.velocity = movement.velocity;
     agent.runtime.heading = movement.heading;
@@ -501,8 +503,8 @@ function engineTick(tickMs: number, skipCognitive = false): void {
     agent.locomotion.isMoving = movement.isMoving;
     agent.locomotion.speed = movement.speed;
 
-    // Track blocked state
-    if (!movement.isMoving && agent.locomotion.isMoving) {
+    // Track blocked state (compare old vs new)
+    if (!movement.isMoving && wasMoving) {
       agent.locomotion.stuckTickCount++;
       if (agent.locomotion.stuckTickCount > 3) {
         agent.runtime.blocked = true;

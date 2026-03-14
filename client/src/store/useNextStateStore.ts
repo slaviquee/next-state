@@ -266,7 +266,7 @@ export const useNextStateStore = create<NextStateStore>((set, get) => ({
 
         // Rebuild navgraph around moved object: block/unblock edges that
         // intersect the object's new footprint (lightweight proximity check)
-        const footprintRadius = (obj.size?.x ?? 0.8) / 2 + 0.3;
+        const footprintRadius = obj.scale.x / 2 + 0.3;
         const footprintRadiusSq = footprintRadius * footprintRadius;
         const updatedEdges = state.navEdges.map((edge) => {
           const navNodes = state.scene!.environment.navigationGraph.nodes;

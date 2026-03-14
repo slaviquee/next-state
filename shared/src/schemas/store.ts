@@ -9,5 +9,6 @@ export const JobStateSchema = z.object({
   currentStep: z.string().nullable(),
   progress: z.number().min(0).max(1),
   error: z.string().nullable(),
+  videoDurationSec: z.number().nullable(),
   startedAt: z.number(),
 });
