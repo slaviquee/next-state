@@ -68,9 +68,82 @@ export async function runStructuring(
       );
 
       if (attempt === MAX_RETRIES) {
-        throw new Error(
-          `Structuring failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}`,
-        );
+        console.warn("Structuring exhausted retries, returning raw analysis with minimal structuring");
+        const w = videoAnalysis.estimatedBounds.widthMeters;
+        const d = videoAnalysis.estimatedBounds.depthMeters;
+        const h = videoAnalysis.estimatedBounds.heightMeters;
+        const floorPoly = {
+          points: [
+            { x: 0, z: 0 }, { x: w, z: 0 },
+            { x: w, z: d }, { x: 0, z: d },
+          ],
+        };
+        const fallback: CompiledScenePackage = {
+          sceneId,
+          sourceVideo: { durationSec: 0, width: 0, height: 0, fpsSampled: 0 },
+          sceneContext: {
+            estimatedLocation: {
+              type: videoAnalysis.sceneContext.locationType,
+              regionHint: videoAnalysis.sceneContext.regionHint,
+              venueTypeHint: videoAnalysis.sceneContext.venueTypeHint,
+              culturalCues: videoAnalysis.sceneContext.culturalCues,
+            },
+            estimatedTime: {
+              timeOfDay: videoAnalysis.sceneContext.timeOfDay,
+              dayTypeHint: videoAnalysis.sceneContext.dayTypeHint,
+              seasonHint: videoAnalysis.sceneContext.seasonHint,
+            },
+            globalSummary: videoAnalysis.sceneContext.globalSummary,
+            crowdDensity: videoAnalysis.sceneContext.crowdDensity,
+            dominantActivity: videoAnalysis.sceneContext.dominantActivity,
+          },
+          environment: {
+            spaceType: videoAnalysis.spaceType,
+            bounds: { width: w, depth: d, height: h },
+            floorPlan: floorPoly,
+            walkableZones: [floorPoly],
+            blockedZones: [],
+            entrances: [],
+            exits: [],
+            objects: [],
+            semanticZones: [],
+            navigationGraph: { nodes: [], edges: [] },
+          },
+          agents: [],
+          simulationConfig: {
+            tickIntervalMs: 150,
+            maxAgents: 20,
+            pathfindingAlgorithm: "astar",
+            cognitiveUpdateWindowSec: 5,
+            maxCognitiveUpdatesPerWindow: 3,
+            goalTtlDefaultSec: 30,
+            collisionAvoidanceRadius: 0.4,
+            stuckTickThreshold: 5,
+            microBehaviorChancePerTick: 0.03,
+          },
+          style: {
+            environmentPalette: {
+              wallPrimary: styleExtraction.environmentPalette.wallPrimary,
+              floor: styleExtraction.environmentPalette.floor,
+              accent: styleExtraction.environmentPalette.accent,
+              lightingMood: styleExtraction.environmentPalette.lightingMood,
+            },
+            dominantPalette: styleExtraction.dominantPalette,
+            objectOverrides: [],
+            agentStyleOverrides: [],
+          },
+          assets: {
+            roomShell: "fallback_room",
+            furniture: [],
+            characters: [],
+          },
+          compileMetadata: {
+            sceneConfidence: 0.2,
+            geminiModel: "gemini-3.1-flash-lite-preview",
+            uncertainty: ["structuring_fallback — raw analysis only, no nav graph"],
+          },
+        };
+        return fallback;
       }
     }
   }

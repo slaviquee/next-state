@@ -62,9 +62,29 @@ export async function runVideoAnalysis(
       );
 
       if (attempt === MAX_RETRIES) {
-        throw new Error(
-          `Video analysis failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}`,
-        );
+        console.warn("Video analysis exhausted retries, returning minimal fallback scene");
+        return {
+          spaceType: "unknown",
+          estimatedBounds: { widthMeters: 8, depthMeters: 12, heightMeters: 3 },
+          objects: [],
+          persons: [],
+          groups: [],
+          entrancesExits: [],
+          zones: [],
+          sceneContext: {
+            locationType: "indoor",
+            regionHint: "unknown",
+            venueTypeHint: "unknown venue",
+            culturalCues: [],
+            timeOfDay: "afternoon",
+            dayTypeHint: "unknown",
+            seasonHint: "unknown",
+            lightingEvidence: "unknown",
+            crowdDensity: "sparse",
+            dominantActivity: "unknown",
+            globalSummary: "Fallback scene — video analysis failed after all retries.",
+          },
+        } satisfies VideoAnalysisOutput;
       }
     }
   }

@@ -3,6 +3,7 @@ import { runVideoAnalysis } from "./agents/video-analysis.js";
 import { runStyleExtraction } from "./agents/style-extraction.js";
 import { runStructuring } from "./agents/structuring.js";
 import { runMindInit } from "./agents/mind-init.js";
+import type { VideoAnalysisOutput, StyleExtractionOutput } from "./schemas.js";
 
 /**
  * Progress event emitted by the pipeline as it moves through stages.
@@ -45,32 +46,51 @@ export async function runCompilePipeline(
   onProgress({ step: "video_analysis", status: "running", progress: 0.05 });
   onProgress({ step: "style_extraction", status: "running", progress: 0.05 });
 
-  let videoAnalysisResult;
-  let styleExtractionResult;
+  const [videoSettled, styleSettled] = await Promise.allSettled([
+    runVideoAnalysis(fileUri, fileMimeType).then((result) => {
+      onProgress({ step: "video_analysis", status: "complete", progress: 0.25 });
+      return result;
+    }),
+    runStyleExtraction(fileUri, fileMimeType).then((result) => {
+      onProgress({ step: "style_extraction", status: "complete", progress: 0.4 });
+      return result;
+    }),
+  ]);
 
-  try {
-    [videoAnalysisResult, styleExtractionResult] = await Promise.all([
-      runVideoAnalysis(fileUri, fileMimeType).then((result) => {
-        onProgress({ step: "video_analysis", status: "complete", progress: 0.25 });
-        return result;
-      }),
-      runStyleExtraction(fileUri, fileMimeType).then((result) => {
-        onProgress({ step: "style_extraction", status: "complete", progress: 0.4 });
-        return result;
-      }),
-    ]);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    // Determine which step failed based on the error message
-    if (message.includes("Video analysis")) {
-      onProgress({ step: "video_analysis", status: "error", progress: 0.25, error: message });
-    } else if (message.includes("Style extraction")) {
-      onProgress({ step: "style_extraction", status: "error", progress: 0.4, error: message });
-    } else {
-      onProgress({ step: "video_analysis", status: "error", progress: 0.25, error: message });
-      onProgress({ step: "style_extraction", status: "error", progress: 0.4, error: message });
-    }
-    throw err;
+  // Video analysis is required — if it fails, the pipeline cannot continue
+  if (videoSettled.status === "rejected") {
+    const message = videoSettled.reason instanceof Error
+      ? videoSettled.reason.message
+      : String(videoSettled.reason);
+    onProgress({ step: "video_analysis", status: "error", progress: 0.25, error: message });
+    throw videoSettled.reason;
+  }
+  const videoAnalysisResult: VideoAnalysisOutput = videoSettled.value;
+
+  // Style extraction failure is recoverable — use neutral palette fallback
+  let styleExtractionResult: StyleExtractionOutput;
+  if (styleSettled.status === "rejected") {
+    const message = styleSettled.reason instanceof Error
+      ? styleSettled.reason.message
+      : String(styleSettled.reason);
+    onProgress({ step: "style_extraction", status: "error", progress: 0.4, error: message });
+    console.warn("Style extraction failed, using neutral palette fallback:", message);
+    styleExtractionResult = {
+      environmentPalette: {
+        wallPrimary: "#cccccc",
+        wallSecondary: "#dddddd",
+        floor: "#888888",
+        accent: "#aaaaaa",
+        lightingMood: "neutral",
+      },
+      dominantPalette: ["#cccccc", "#888888", "#aaaaaa"],
+      personClothingColors: [],
+      objectColors: [],
+      lightingDirection: "overhead",
+      overallWarmth: 0.5,
+    };
+  } else {
+    styleExtractionResult = styleSettled.value;
   }
 
   // -----------------------------------------------------------------------
@@ -90,6 +110,22 @@ export async function runCompilePipeline(
     const message = err instanceof Error ? err.message : String(err);
     onProgress({ step: "structuring", status: "error", progress: 0.7, error: message });
     throw err;
+  }
+
+  // -----------------------------------------------------------------------
+  // Low-confidence fallback (§22.2)
+  // -----------------------------------------------------------------------
+  if (structuredScene.compileMetadata.sceneConfidence < 0.4) {
+    console.warn(
+      `Low scene confidence (${structuredScene.compileMetadata.sceneConfidence}), applying simplification`,
+    );
+    structuredScene.environment.spaceType = "unknown";
+    structuredScene.environment.objects = structuredScene.environment.objects.slice(0, 5);
+    structuredScene.agents = structuredScene.agents.slice(0, Math.max(3, structuredScene.agents.length));
+    if (structuredScene.agents.length > 3) {
+      structuredScene.agents = structuredScene.agents.slice(0, 3);
+    }
+    structuredScene.compileMetadata.uncertainty.push("low_confidence_simplification_applied");
   }
 
   // -----------------------------------------------------------------------

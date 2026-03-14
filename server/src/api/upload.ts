@@ -71,7 +71,11 @@ uploadRouter.post("/upload-video", upload.single("video"), async (req, res) => {
     job.fileMimeType = uploadedFile.mimeType!;
     job.progress = 0.1;
 
-    res.json({ jobId, fileUri: uploadedFile.uri });
+    res.json({
+      jobId,
+      fileUri: uploadedFile.uri,
+      warning: `Video duration not validated on server — uploads longer than ${env.MAX_VIDEO_DURATION_SEC}s may produce lower quality results.`,
+    });
   } catch (err) {
     console.error("Upload error:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Upload failed" });
