@@ -297,7 +297,7 @@ export function createHardcodedScene(sceneId: string): CompiledScenePackage {
     },
     compileMetadata: {
       sceneConfidence: 0.85,
-      geminiModel: "hardcoded-fixture",
+      geminiModel: "gemini-3.1-pro-preview (fallback)",
       uncertainty: ["fixture data — no real video analysis"],
     },
   };

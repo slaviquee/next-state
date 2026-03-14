@@ -318,6 +318,21 @@ export function getPostInteractionGoal(
     return { type: "follow_companion" };
   }
 
+  // After service exchange, customer wanders or finds a seat
+  if (interactionType === "service_exchange" && agent.mind.archetype !== "staff") {
+    return { type: "find_seat" };
+  }
+
+  // After conversation, agents tend to wander
+  if (interactionType === "conversation") {
+    return { type: "wander" };
+  }
+
+  // Shared reaction: reposition to a better vantage point
+  if (interactionType === "shared_reaction") {
+    return { type: "reposition" };
+  }
+
   return null;
 }
 
@@ -343,6 +358,46 @@ export function cleanupProximityTracker(activeAgentIds: Set<string>): void {
       proximityTracker.delete(key);
     }
   }
+}
+
+/**
+ * Cancel all active interactions in a given zone. Both agents immediately
+ * enter cooldown and trigger a replan. Returns cancelled interaction IDs.
+ */
+export function cancelInteractionsInZone(
+  zoneId: string,
+  activeInteractions: ActiveInteraction[],
+  agents: Map<string, AgentModel>,
+  simClock: number,
+): { remaining: ActiveInteraction[]; cancelledAgentIds: string[] } {
+  const remaining: ActiveInteraction[] = [];
+  const cancelledAgentIds: string[] = [];
+
+  for (const interaction of activeInteractions) {
+    const initiator = agents.get(interaction.initiatorId);
+    const target = agents.get(interaction.targetId);
+
+    const initiatorInZone = initiator?.runtime.occupyingZoneId === zoneId;
+    const targetInZone = target?.runtime.occupyingZoneId === zoneId;
+
+    if (initiatorInZone || targetInZone) {
+      // Cancel — put both agents into cooldown state
+      if (initiator) {
+        initiator.runtime.lastInteractionAt = simClock;
+        initiator.runtime.activeInteractionId = null;
+        cancelledAgentIds.push(initiator.id);
+      }
+      if (target) {
+        target.runtime.lastInteractionAt = simClock;
+        target.runtime.activeInteractionId = null;
+        cancelledAgentIds.push(target.id);
+      }
+    } else {
+      remaining.push(interaction);
+    }
+  }
+
+  return { remaining, cancelledAgentIds };
 }
 
 /**

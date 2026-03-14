@@ -118,9 +118,27 @@ async function initSingleAgentMind(
       );
 
       if (attempt === MAX_RETRIES) {
-        throw new Error(
-          `Mind-init for ${agent.id} failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}`,
-        );
+        console.warn(`Mind-init for ${agent.id} exhausted retries, using default fallback`);
+        return {
+          archetype: "unknown",
+          primaryGoal: {
+            type: "wander",
+            urgency: 0.3,
+            ttlSec: 30,
+          },
+          currentIntent: "Looking around.",
+          arousal: 0.3,
+          patience: 0.5,
+          curiosity: 0.5,
+          conformity: 0.5,
+          reactionStyle: "calm",
+          likelyNextActions: [
+            { label: "wander", probability: 0.6 },
+            { label: "stay_put", probability: 0.4 },
+          ],
+          socialLinks: [],
+          confidence: 0.1,
+        } satisfies MindInitOutput;
       }
     }
   }

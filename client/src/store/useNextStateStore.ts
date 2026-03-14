@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { CompiledScenePackage, AgentModel, NavEdge, AgentMindState, AgentGoal } from "@next-state/shared";
-import { requestReplan } from "../simulation/engine";
+import { requestReplan, getActiveInteractions, removeInteractions } from "../simulation/engine";
+import { cancelInteractionsInZone } from "../simulation/interactions";
 
 interface CompileStep {
   label: string;
@@ -201,6 +202,26 @@ export const useNextStateStore = create<NextStateStore>((set, get) => ({
         }
         return edge;
       });
+
+      // Cancel active interactions in the affected zone and trigger replans
+      const interactions = getActiveInteractions();
+      const { remaining, cancelledAgentIds } = cancelInteractionsInZone(
+        zoneId,
+        interactions,
+        state.agents,
+        state.simClock,
+      );
+      // Remove cancelled interactions from the engine's list
+      const cancelledIds = new Set(
+        interactions.filter((i) => !remaining.includes(i)).map((i) => i.id),
+      );
+      if (cancelledIds.size > 0) {
+        removeInteractions(cancelledIds);
+      }
+      for (const agentId of cancelledAgentIds) {
+        requestReplan(agentId);
+      }
+
       set({ navEdges: updatedEdges });
     }
 

@@ -13,6 +13,7 @@ import {
   computeFacingHeading,
   resetInteractionState,
 } from "./interactions";
+import { checkCognitiveRefresh } from "./cognitive";
 
 /**
  * Full simulation engine.
@@ -348,24 +349,33 @@ function engineTick(tickMs: number): void {
     const pausedByInteraction = shouldPauseForInteraction(id, activeInteractions);
 
     if (pausedByInteraction) {
-      // Turn to face interaction partner during approaching phase
-      if (interactionAnim === "turn") {
-        const interaction = activeInteractions.find(
-          (i) => i.initiatorId === id || i.targetId === id,
-        );
-        if (interaction) {
-          const partnerId = interaction.initiatorId === id
-            ? interaction.targetId
-            : interaction.initiatorId;
-          const partner = agents.get(partnerId);
-          if (partner) {
-            agent.runtime.heading = computeFacingHeading(agent, partner);
-          }
-        }
-      }
       agent.runtime.animationState = interactionAnim ?? "talk";
       agent.locomotion.isMoving = false;
       agent.locomotion.speed = 0;
+      continue;
+    }
+
+    // Approaching phase: turn to face partner but keep moving toward them
+    if (interactionAnim === "turn") {
+      const interaction = activeInteractions.find(
+        (i) => i.initiatorId === id || i.targetId === id,
+      );
+      if (interaction) {
+        const partnerId = interaction.initiatorId === id
+          ? interaction.targetId
+          : interaction.initiatorId;
+        const partner = agents.get(partnerId);
+        if (partner) {
+          agent.runtime.heading = computeFacingHeading(agent, partner);
+          // Move toward interaction partner during approaching phase
+          const movement = computeMovement(agent, world, dtSec, true);
+          agent.runtime.position = movement.position;
+          agent.runtime.velocity = movement.velocity;
+          agent.locomotion.isMoving = movement.isMoving;
+          agent.locomotion.speed = movement.speed;
+        }
+      }
+      agent.runtime.animationState = "turn";
       continue;
     }
 
@@ -468,6 +478,11 @@ function engineTick(tickMs: number): void {
     zoneOccupancy,
     objectOccupancy,
   });
+
+  // ── Phase 5: Check cognitive refresh triggers ─────────────────────────────
+  // Fire-and-forget: checkCognitiveRefresh internally gates on
+  // cognitiveUpdateWindowSec so this is cheap on most ticks.
+  checkCognitiveRefresh();
 }
 
 // ── Recent Events Ring Buffer ──────────────────────────────────────────────────
@@ -536,4 +551,11 @@ export function requestGlobalReplan(): void {
  */
 export function getActiveInteractions(): ActiveInteraction[] {
   return activeInteractions;
+}
+
+/**
+ * Remove interactions from the active list (e.g., after intervention cancellation).
+ */
+export function removeInteractions(idsToRemove: Set<string>): void {
+  activeInteractions = activeInteractions.filter((i) => !idsToRemove.has(i.id));
 }

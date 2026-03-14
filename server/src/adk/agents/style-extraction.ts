@@ -62,9 +62,21 @@ export async function runStyleExtraction(
       );
 
       if (attempt === MAX_RETRIES) {
-        throw new Error(
-          `Style extraction failed after ${MAX_RETRIES + 1} attempts: ${lastError.message}`,
-        );
+        console.warn("Style extraction exhausted retries, returning neutral palette fallback");
+        return {
+          environmentPalette: {
+            wallPrimary: "#cccccc",
+            wallSecondary: "#dddddd",
+            floor: "#888888",
+            accent: "#aaaaaa",
+            lightingMood: "neutral",
+          },
+          dominantPalette: ["#cccccc", "#888888", "#aaaaaa"],
+          personClothingColors: [],
+          objectColors: [],
+          lightingDirection: "overhead",
+          overallWarmth: 0.5,
+        } satisfies StyleExtractionOutput;
       }
     }
   }

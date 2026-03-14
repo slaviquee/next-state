@@ -178,7 +178,7 @@ agentRefreshRouter.post("/agent-refresh", async (req, res) => {
           contents: prompt,
           config: {
             responseMimeType: "application/json",
-            responseSchema: cognitiveRefreshJsonSchema as Record<string, unknown>,
+            responseJsonSchema: cognitiveRefreshJsonSchema as Record<string, unknown>,
           },
         });
 
