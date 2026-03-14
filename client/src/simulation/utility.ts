@@ -19,6 +19,7 @@ export interface WorldState {
   objectOccupancy: Map<string, string | null>;
   goalTtlDefaultSec: number;
   collisionAvoidanceRadius: number;
+  stuckTickThreshold: number;
 }
 
 export interface ActiveInteraction {

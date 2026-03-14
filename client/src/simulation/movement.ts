@@ -74,6 +74,35 @@ function findGoalNodeId(agent: AgentModel, world: WorldState): string | null {
     }
   }
 
+  // For find_seat without a target, find nearest unoccupied chair/sofa
+  if (goal.type === "find_seat" && !goal.targetObjectId) {
+    const seatTypes = new Set(["chair", "sofa"]);
+    let bestDist = Infinity;
+    let bestObj: typeof world.environment.objects[number] | null = null;
+
+    for (const obj of world.environment.objects) {
+      if (!seatTypes.has(obj.type)) continue;
+      // Check occupancy — skip if occupied
+      const occupant = world.objectOccupancy.get(obj.id);
+      if (occupant !== null && occupant !== undefined) continue;
+
+      const dx = agent.runtime.position.x - obj.position.x;
+      const dz = agent.runtime.position.z - obj.position.z;
+      const d = dx * dx + dz * dz;
+      if (d < bestDist) {
+        bestDist = d;
+        bestObj = obj;
+      }
+    }
+
+    if (bestObj) {
+      // Assign the target so future ticks don't re-search
+      agent.mind.primaryGoal.targetObjectId = bestObj.id;
+      const node = findClosestNode(bestObj.position, world.navGraph);
+      return node?.id ?? null;
+    }
+  }
+
   // For zone-targeted goals
   if (goal.targetZoneId) {
     for (const node of world.navGraph.nodes) {

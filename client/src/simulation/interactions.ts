@@ -168,7 +168,27 @@ export function detectInteractionTriggers(
         continue;
       }
 
-      // 3. Lone agent near group with high attractivenessWeight
+      // 3. yield_space: agent blocks another's path (one blocked, one nearby and moving)
+      if (
+        !areCompanions &&
+        ((a.runtime.blocked && b.locomotion.isMoving) ||
+         (b.runtime.blocked && a.locomotion.isMoving))
+      ) {
+        const blocker = a.runtime.blocked ? b : a;
+        const blocked = a.runtime.blocked ? a : b;
+        triggers.push({
+          initiatorId: blocker.id,
+          targetId: blocked.id,
+          type: "yield_space",
+          animationHint: "brief_pause",
+          durationSec: 0.5 + Math.random() * 0.5,
+          triggerCondition: "agent yielding space to blocked agent",
+        });
+        proximityTracker.delete(key);
+        continue;
+      }
+
+      // 4. Lone agent near group with high attractivenessWeight
       const aInGroup = a.social.groupId !== undefined;
       const bInGroup = b.social.groupId !== undefined;
       if (aInGroup !== bInGroup) {
@@ -193,6 +213,46 @@ export function detectInteractionTriggers(
           }
         }
       }
+    }
+  }
+
+  return triggers;
+}
+
+/**
+ * Detect shared_reaction triggers: agents in the same zone who just witnessed
+ * an intervention (react animation state or recent intervention event).
+ */
+export function detectSharedReactions(
+  world: WorldState,
+  interventionZoneId: string | null,
+): InteractionTrigger[] {
+  if (!interventionZoneId) return [];
+
+  const triggers: InteractionTrigger[] = [];
+  const agentsInZone: AgentModel[] = [];
+
+  for (const [, agent] of world.agents) {
+    if (agent.runtime.occupyingZoneId === interventionZoneId) {
+      if (isInActiveInteraction(agent.id, world.activeInteractions)) continue;
+      if (isOnCooldown(agent, world.simClock)) continue;
+      agentsInZone.push(agent);
+    }
+  }
+
+  // Pair up agents for shared_reaction (at most 2 pairs to avoid spam)
+  let pairCount = 0;
+  for (let i = 0; i < agentsInZone.length && pairCount < 2; i++) {
+    for (let j = i + 1; j < agentsInZone.length && pairCount < 2; j++) {
+      triggers.push({
+        initiatorId: agentsInZone[i].id,
+        targetId: agentsInZone[j].id,
+        type: "shared_reaction",
+        animationHint: "face_each_other",
+        durationSec: 1.5 + Math.random() * 1.5,
+        triggerCondition: "agents witnessing same intervention",
+      });
+      pairCount++;
     }
   }
 

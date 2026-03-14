@@ -179,19 +179,7 @@ export async function performCognitiveRefresh(
   const { agents, scene, simClock } = worldState;
 
   // Build runtime snapshot for the request
-  const agentStates: Record<
-    string,
-    {
-      position: { x: number; y: number; z: number };
-      heading: number;
-      currentGoal: string;
-      animationState: string;
-      blocked: boolean;
-      stuckTickCount: number;
-      goalStartedAt: number;
-      lastInteractionAt: number | null;
-    }
-  > = {};
+  const agentStates: AgentRefreshRequest["runtimeSnapshot"]["agentStates"] = {};
 
   for (const [id, agent] of agents) {
     agentStates[id] = {
@@ -308,12 +296,14 @@ export function checkCognitiveRefresh(): void {
   if (simClock - lastCheckTime < windowMs) return;
   lastCheckTime = simClock;
 
+  const interventionZoneId = store.interventionZoneId ?? null;
+
   const worldState: WorldState = {
     agents,
     scene,
     simClock,
     selectedAgentId,
-    interventionZoneId: null, // set by intervention handler if needed
+    interventionZoneId,
   };
 
   const agentIds = selectAgentsForRefresh(worldState);

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import type { CompiledScenePackage, AgentModel, NavEdge, AgentMindState, AgentGoal } from "@next-state/shared";
-import { requestReplan, getActiveInteractions, removeInteractions } from "../simulation/engine";
+import { requestReplan, getActiveInteractions, removeInteractions, runTicksBatch } from "../simulation/engine";
 import { cancelInteractionsInZone } from "../simulation/interactions";
 
 interface CompileStep {
@@ -28,6 +28,9 @@ interface NextStateStore {
   // Occupancy tracking
   zoneOccupancy: Map<string, string[]>;
   objectOccupancy: Map<string, string | null>;
+
+  // Cognitive refresh
+  interventionZoneId: string | null;
 
   // UI state
   selectedAgentId: string | null;
@@ -76,6 +79,7 @@ export const useNextStateStore = create<NextStateStore>((set, get) => ({
   navEdges: [],
   zoneOccupancy: new Map(),
   objectOccupancy: new Map(),
+  interventionZoneId: null,
   selectedAgentId: null,
   inspectorOpen: false,
   debugOverlayVisible: false,
@@ -222,7 +226,101 @@ export const useNextStateStore = create<NextStateStore>((set, get) => ({
         requestReplan(agentId);
       }
 
-      set({ navEdges: updatedEdges });
+      set({ navEdges: updatedEdges, interventionZoneId: zoneId });
+
+      // Clear interventionZoneId after one cognitive refresh window
+      const windowMs = (state.scene?.simulationConfig.cognitiveUpdateWindowSec ?? 5) * 1000;
+      setTimeout(() => {
+        set({ interventionZoneId: null });
+      }, windowMs);
+    }
+
+    if (type === "move_table") {
+      const objectId = params.objectId as string;
+      const newPosition = params.position as { x: number; z: number };
+      if (!state.scene || !objectId || !newPosition) return;
+
+      // Update the object position in the scene
+      const obj = state.scene.environment.objects.find((o) => o.id === objectId);
+      if (obj) {
+        obj.position.x = newPosition.x;
+        obj.position.z = newPosition.z;
+
+        // If occupied, evict the agent
+        const occupant = state.objectOccupancy.get(objectId);
+        if (occupant) {
+          const agent = state.agents.get(occupant);
+          if (agent) {
+            agent.runtime.occupyingObjectId = null;
+            agent.runtime.animationState = "idle";
+            agent.mind.primaryGoal.type = "find_seat";
+            agent.mind.primaryGoal.targetObjectId = undefined;
+            agent.runtime.goalStartedAt = state.simClock;
+            agent.runtime.goalChangedCount++;
+            requestReplan(agent.id);
+          }
+          const newOccupancy = new Map(state.objectOccupancy);
+          newOccupancy.set(objectId, null);
+          set({ objectOccupancy: newOccupancy });
+        }
+
+        set({ agents: new Map(state.agents) });
+      }
+    }
+
+    if (type === "mark_congested") {
+      const zoneId = params.zoneId as string;
+      if (!state.scene || !zoneId) return;
+
+      // Reduce attractiveness of the zone so agents avoid it
+      const zone = state.scene.environment.semanticZones.find((z) => z.id === zoneId);
+      if (zone) {
+        zone.attractivenessWeight = Math.max(0, zone.attractivenessWeight - 0.5);
+      }
+
+      // Agents in the zone should reposition
+      const zoneOccupants = state.zoneOccupancy.get(zoneId) ?? [];
+      for (const agentId of zoneOccupants) {
+        const agent = state.agents.get(agentId);
+        if (agent && agent.runtime.animationState !== "sit") {
+          agent.mind.primaryGoal.type = "avoid_crowd";
+          agent.runtime.goalStartedAt = state.simClock;
+          agent.runtime.goalChangedCount++;
+          requestReplan(agentId);
+        }
+      }
+
+      set({ agents: new Map(state.agents), interventionZoneId: zoneId });
+      const windowMs = (state.scene.simulationConfig.cognitiveUpdateWindowSec ?? 5) * 1000;
+      setTimeout(() => set({ interventionZoneId: null }), windowMs);
+    }
+
+    if (type === "make_exit_attractive") {
+      if (!state.scene) return;
+
+      // Find exit zones and boost their attractiveness
+      for (const zone of state.scene.environment.semanticZones) {
+        if (zone.type === "exit") {
+          zone.attractivenessWeight = Math.min(1, zone.attractivenessWeight + 0.4);
+        }
+      }
+
+      // Give a subset of agents the move_to_exit goal
+      let redirectCount = 0;
+      const maxToRedirect = Math.ceil(state.agents.size * 0.3);
+      for (const [, agent] of state.agents) {
+        if (redirectCount >= maxToRedirect) break;
+        if (agent.mind.primaryGoal.type === "stay_put" || agent.mind.primaryGoal.type === "wander") {
+          agent.mind.primaryGoal.type = "move_to_exit";
+          agent.mind.primaryGoal.urgency = 0.8;
+          agent.runtime.goalStartedAt = state.simClock;
+          agent.runtime.goalChangedCount++;
+          requestReplan(agent.id);
+          redirectCount++;
+        }
+      }
+
+      set({ agents: new Map(state.agents) });
     }
 
     if (type === "add_people") {
@@ -335,8 +433,20 @@ export const useNextStateStore = create<NextStateStore>((set, get) => ({
 
   fastForward: (seconds) => {
     const state = get();
-    const ms = seconds * 1000;
-    set({ simClock: state.simClock + ms });
+    if (!state.scene) return;
+
+    const tickMs = state.scene.simulationConfig.tickIntervalMs;
+    const totalTicks = Math.round((seconds * 1000) / tickMs);
+    // Cap at 200 ticks to avoid freezing UI
+    const maxTicks = Math.min(totalTicks, 200);
+
+    // Temporarily enable simulation if paused
+    const wasRunning = state.simRunning;
+    if (!wasRunning) set({ simRunning: true });
+
+    runTicksBatch(maxTicks, tickMs);
+
+    if (!wasRunning) set({ simRunning: false });
   },
 
   resetToIdle: () => {

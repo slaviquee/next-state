@@ -127,6 +127,46 @@ interventionRouter.post("/intervention", (req, res) => {
         return;
       }
 
+      // -----------------------------------------------------------------
+      // mark_congested: reduce zone attractiveness (client handles behavior)
+      // -----------------------------------------------------------------
+      case "mark_congested": {
+        const zoneId = params.zoneId as string | undefined;
+        if (!zoneId) {
+          res.status(400).json({ error: "params.zoneId is required for mark_congested" });
+          return;
+        }
+
+        const zone = scene.environment.semanticZones.find((z) => z.id === zoneId);
+        if (!zone) {
+          res.status(404).json({ error: `Zone ${zoneId} not found` });
+          return;
+        }
+
+        zone.attractivenessWeight = Math.max(0, zone.attractivenessWeight - 0.5);
+
+        const response: InterventionResponse = { success: true };
+        res.json({ ...response, updatedZone: { zoneId, attractivenessWeight: zone.attractivenessWeight } });
+        return;
+      }
+
+      // -----------------------------------------------------------------
+      // make_exit_attractive: boost exit zone attractiveness
+      // -----------------------------------------------------------------
+      case "make_exit_attractive": {
+        const updatedZones: Array<{ zoneId: string; attractivenessWeight: number }> = [];
+        for (const zone of scene.environment.semanticZones) {
+          if (zone.type === "exit") {
+            zone.attractivenessWeight = Math.min(1, zone.attractivenessWeight + 0.4);
+            updatedZones.push({ zoneId: zone.id, attractivenessWeight: zone.attractivenessWeight });
+          }
+        }
+
+        const response: InterventionResponse = { success: true };
+        res.json({ ...response, updatedZones });
+        return;
+      }
+
       default: {
         res.status(400).json({ error: `Unknown intervention type: ${type}` });
         return;

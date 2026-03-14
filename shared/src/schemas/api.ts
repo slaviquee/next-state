@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Vec3Schema } from "./primitives.js";
-import { AgentGoalSchema, AgentMindStateSchema, RecentEventSchema } from "./agent.js";
+import { AgentGoalSchema, AgentGoalTypeSchema, AgentMindStateSchema, AgentRuntimeStateSchema, RecentEventSchema } from "./agent.js";
 
 // POST /api/upload-video response
 export const UploadVideoResponseSchema = z.object({
@@ -35,8 +35,8 @@ export const CompileCompleteEventSchema = z.object({
 export const AgentSnapshotSchema = z.object({
   position: Vec3Schema,
   heading: z.number(),
-  currentGoal: z.string(),
-  animationState: z.string(),
+  currentGoal: AgentGoalTypeSchema,
+  animationState: AgentRuntimeStateSchema.shape.animationState,
   blocked: z.boolean(),
   stuckTickCount: z.number(),
   goalStartedAt: z.number(),
@@ -77,7 +77,7 @@ export const AgentRefreshResponseSchema = z.object({
 // POST /api/intervention request
 export const InterventionRequestSchema = z.object({
   sceneId: z.string(),
-  type: z.enum(["block_corridor", "add_people", "move_table"]),
+  type: z.enum(["block_corridor", "add_people", "move_table", "mark_congested", "make_exit_attractive"]),
   params: z.record(z.string(), z.unknown()),
 });
 
