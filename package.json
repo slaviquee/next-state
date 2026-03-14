@@ -1,0 +1,9 @@
+{
+  "name": "next-state",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ]
+}
